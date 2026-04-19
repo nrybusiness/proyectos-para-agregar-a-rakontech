@@ -1,0 +1,273 @@
+<style>
+/* ==========================================================
+   VARIABLES — R3GIMEN GYM · Azul Neón Eléctrico
+   ========================================================== */
+:root {
+  --bg:            #0e0e0e;
+  --bg2:           #161616;
+  --bg3:           #1e1e1e;
+  --neon:          #00d2ff;          /* ← nuevo acento */
+  --neon-dim:      #00a8cc;
+  --neon-glow:     rgba(0,210,255,0.25);
+  --neon-glow-lg:  rgba(0,210,255,0.45);
+  --glass:         rgba(255,255,255,0.04);
+  --glass-border:  rgba(255,255,255,0.08);
+  --glass-hover:   rgba(255,255,255,0.07);
+  --text-primary:  #f0f0f0;
+  --text-muted:    #888888;
+  --text-faint:    #444444;
+  --danger:        #ff4444;
+  --warning:       #ffaa00;
+  --success:       var(--neon);
+  --radius-sm:     8px;
+  --radius-md:     12px;
+  --radius-lg:     16px;
+  --transition:    all 0.2s ease;
+}
+
+/* ==========================================================
+   RESET & BASE
+   ========================================================== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 100vh;
+  padding-bottom: 110px;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 430px; margin: 0 auto; }
+
+/* ==========================================================
+   HEADER ALUMNO
+   ========================================================== */
+.header {
+  background: linear-gradient(180deg, #1a1a1a 0%, var(--bg) 100%);
+  padding: 32px 20px 24px;
+  position: relative;
+  overflow: hidden;
+}
+.header::before {
+  content: '';
+  position: absolute;
+  top: -70px; right: -50px;
+  width: 220px; height: 220px;
+  background: radial-gradient(circle, rgba(0,210,255,0.07) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.header-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+.greeting-label { font-size: 11px; color: var(--neon); letter-spacing: 3px; text-transform: uppercase; font-weight: 600; margin-bottom: 2px; }
+.greeting-name { font-family: 'Bebas Neue', sans-serif; font-size: 44px; letter-spacing: 2px; color: var(--text-primary); line-height: 1; font-weight: 400; }
+.avatar {
+  width: 50px; height: 50px; border-radius: 50%;
+  background: #1a1a1a;
+  border: 2px solid var(--neon);
+  box-shadow: 0 0 12px var(--neon-glow);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Oswald', sans-serif; font-size: 17px; font-weight: 700;
+  color: var(--neon); flex-shrink: 0; letter-spacing: 1px;
+}
+.badge-status {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: rgba(0,210,255,0.07);
+  border: 1px solid rgba(0,210,255,0.2);
+  border-radius: 20px; padding: 5px 13px;
+  font-size: 12px; font-weight: 500; color: var(--neon); margin-bottom: 14px;
+}
+.badge-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--neon);
+  box-shadow: 0 0 8px var(--neon);
+  animation: pulseDot 2s ease-in-out infinite;
+}
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.8); }
+}
+.progress-wrap { background: rgba(255,255,255,0.06); border-radius: 6px; height: 5px; overflow: hidden; margin-bottom: 7px; }
+.progress-bar {
+  height: 100%; border-radius: 6px;
+  background: linear-gradient(90deg, var(--neon), #0090b3);
+  box-shadow: 0 0 10px var(--neon-glow);
+  transition: width 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.progress-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); }
+.progress-alert { color: var(--warning); font-weight: 600; }
+
+/* ==========================================================
+   SECCIONES
+   ========================================================== */
+.section { padding: 24px 20px 0; }
+.section-last { margin-bottom: 0; }
+.section-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; }
+.section-title { font-family: 'Oswald', sans-serif; font-size: 19px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-primary); }
+.section-sub { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+
+/* ==========================================================
+   TARJETAS DE CLASE
+   ========================================================== */
+.class-card {
+  background: var(--glass); border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md); padding: 13px 15px; margin-bottom: 10px;
+  display: flex; align-items: center; gap: 13px;
+  cursor: pointer; transition: var(--transition);
+  position: relative; overflow: hidden;
+}
+.class-card:not(.full):hover {
+  background: var(--glass-hover);
+  border-color: rgba(0,210,255,0.25);
+  box-shadow: 0 0 18px rgba(0,210,255,0.08);
+  transform: translateY(-1px);
+}
+.class-card:not(.full):active { transform: scale(0.98); }
+.class-card.full { opacity: 0.5; cursor: default; }
+.class-card.reservado { border-color: rgba(0,210,255,0.3); box-shadow: 0 0 14px rgba(0,210,255,0.1); }
+.sold-tag { position: absolute; top: 0; right: 0; background: var(--danger); color: #fff; font-size: 9px; font-weight: 700; padding: 3px 9px; border-radius: 0 var(--radius-md) 0 7px; letter-spacing: 1px; }
+.class-time-block { display: flex; flex-direction: column; align-items: center; min-width: 50px; padding: 7px 10px; background: rgba(255,255,255,0.05); border-radius: 9px; }
+.class-time { font-family: 'Bebas Neue', sans-serif; font-size: 23px; line-height: 1; color: var(--neon); }
+.class-ampm { font-size: 10px; color: var(--text-muted); letter-spacing: 0.5px; margin-top: 1px; }
+.class-info { flex: 1; min-width: 0; }
+.class-name { font-family: 'Oswald', sans-serif; font-size: 15px; font-weight: 600; letter-spacing: 0.4px; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.class-instructor { font-size: 12px; color: var(--text-muted); }
+.class-right { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; flex-shrink: 0; }
+.cupos-pill { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 20px; letter-spacing: 0.3px; white-space: nowrap; }
+.cupos-ok   { background: rgba(0,210,255,0.09);  color: var(--neon);    border: 1px solid rgba(0,210,255,0.2); }
+.cupos-warn { background: rgba(255,170,0,0.09);  color: var(--warning); border: 1px solid rgba(255,170,0,0.2); }
+.cupos-full { background: rgba(255,68,68,0.09);  color: var(--danger);  border: 1px solid rgba(255,68,68,0.2); }
+.btn-reservar { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.4px; padding: 6px 13px; border-radius: var(--radius-sm); border: none; cursor: pointer; transition: var(--transition); white-space: nowrap; }
+.btn-volt { background: var(--neon); color: #000; box-shadow: 0 0 14px var(--neon-glow); }
+.btn-volt:hover { background: var(--neon-dim); box-shadow: 0 0 24px var(--neon-glow-lg); transform: scale(1.04); }
+.btn-volt:active { transform: scale(0.96); }
+.btn-confirmed { background: transparent; color: var(--neon); border: 1px solid var(--neon); cursor: default; }
+.btn-disabled { background: #222; color: #555; cursor: not-allowed; border: 1px solid #333; }
+
+/* ==========================================================
+   RUTINA
+   ========================================================== */
+.rutina-card { background: var(--glass); border: 1px solid var(--glass-border); border-radius: var(--radius-lg); overflow: hidden; }
+.rutina-header { padding: 14px 16px; background: rgba(0,210,255,0.04); border-bottom: 1px solid var(--glass-border); display: flex; align-items: center; gap: 12px; }
+.rutina-icon { width: 38px; height: 38px; border-radius: 9px; background: rgba(0,210,255,0.09); display: flex; align-items: center; justify-content: center; font-size: 19px; flex-shrink: 0; }
+.rutina-meta-title { font-family: 'Oswald', sans-serif; font-size: 16px; font-weight: 600; letter-spacing: 0.5px; }
+.rutina-meta-sub { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+.rutina-body { padding: 12px 16px; }
+.exercise-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.exercise-row:last-child { border-bottom: none; }
+.ex-num { font-family: 'Bebas Neue', sans-serif; font-size: 18px; color: var(--neon); min-width: 22px; line-height: 1; }
+.ex-name { flex: 1; font-size: 14px; font-weight: 500; min-width: 0; }
+.ex-sets { font-size: 11px; color: var(--text-muted); background: rgba(255,255,255,0.05); padding: 3px 9px; border-radius: 6px; white-space: nowrap; }
+.check-circle { width: 23px; height: 23px; border-radius: 50%; border: 1.5px solid var(--text-faint); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: var(--transition); flex-shrink: 0; }
+.check-circle:hover { border-color: var(--neon); box-shadow: 0 0 8px var(--neon-glow); }
+.check-circle.done { background: var(--neon); border-color: var(--neon); box-shadow: 0 0 10px var(--neon-glow); }
+.check-circle.done::after { content: '✓'; font-size: 12px; color: #000; font-weight: 700; }
+
+/* ==========================================================
+   CTA FOOTER ALUMNO
+   ========================================================== */
+.footer-cta { position: fixed; bottom: 0; left: 0; right: 0; padding: 14px 20px 28px; background: linear-gradient(0deg, var(--bg) 55%, transparent); }
+.btn-cta {
+  width: 100%; max-width: 430px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: var(--neon); color: #000;
+  font-family: 'Oswald', sans-serif; font-size: 20px; font-weight: 700;
+  letter-spacing: 2.5px; text-transform: uppercase;
+  padding: 16px 24px; border-radius: var(--radius-lg); border: none; cursor: pointer;
+  box-shadow: 0 0 32px var(--neon-glow), 0 4px 24px rgba(0,0,0,0.5);
+  transition: var(--transition);
+}
+.btn-cta:hover { background: var(--neon-dim); box-shadow: 0 0 52px var(--neon-glow-lg), 0 4px 30px rgba(0,0,0,0.6); transform: translateY(-2px); }
+.btn-cta:active { transform: scale(0.97); }
+.cta-icon { font-size: 20px; }
+
+/* ==========================================================
+   TOAST
+   ========================================================== */
+.toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-80px); background: #1e1e1e; border: 1px solid var(--glass-border); border-radius: 10px; padding: 10px 20px; font-size: 13px; font-weight: 500; color: var(--text-primary); box-shadow: 0 4px 24px rgba(0,0,0,0.5); transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1); z-index: 9999; white-space: nowrap; pointer-events: none; }
+.toast.show { transform: translateX(-50%) translateY(0); }
+.toast.toast-success { border-color: rgba(0,210,255,0.3); color: var(--neon); }
+.toast.toast-error   { border-color: rgba(255,68,68,0.3);  color: var(--danger); }
+
+/* ==========================================================
+   SKELETON
+   ========================================================== */
+.skeleton-card { height: 72px; background: linear-gradient(90deg, #1a1a1a 25%, #222 50%, #1a1a1a 75%); background-size: 200% 100%; border-radius: var(--radius-md); margin-bottom: 10px; animation: shimmer 1.4s infinite; }
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* ==========================================================
+   ADMIN — LAYOUT Y HEADER
+   ========================================================== */
+.admin-wrap { max-width: 600px; margin: 0 auto; padding-bottom: 40px; }
+
+.admin-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 28px 20px 20px;
+  border-bottom: 1px solid var(--glass-border);
+  background: linear-gradient(180deg, #1a1a1a 0%, var(--bg) 100%);
+  position: relative; overflow: hidden;
+}
+.admin-header::before {
+  content: '';
+  position: absolute; top: -60px; right: -40px;
+  width: 200px; height: 200px;
+  background: radial-gradient(circle, rgba(0,210,255,0.07) 0%, transparent 70%);
+  border-radius: 50%; pointer-events: none;
+}
+.admin-brand { display: flex; flex-direction: column; }
+.admin-brand-name { font-family: 'Bebas Neue', sans-serif; font-size: 36px; letter-spacing: 3px; color: var(--text-primary); line-height: 1; }
+.admin-brand-tag { font-size: 11px; color: var(--neon); letter-spacing: 2.5px; text-transform: uppercase; font-weight: 600; margin-top: 2px; }
+.admin-avatar { width: 44px; height: 44px; border-radius: 50%; background: #1a1a1a; border: 2px solid var(--neon); box-shadow: 0 0 14px var(--neon-glow); display: flex; align-items: center; justify-content: center; font-family: 'Oswald', sans-serif; font-size: 15px; font-weight: 700; color: var(--neon); letter-spacing: 1px; flex-shrink: 0; }
+
+/* ==========================================================
+   ADMIN — KPI GRID
+   ========================================================== */
+.kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 20px 20px 0; }
+.kpi-card {
+  background: var(--glass); border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md); padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.kpi-card.kpi-alert { border-color: rgba(255,68,68,0.2); background: rgba(255,68,68,0.04); }
+.kpi-label { font-size: 11px; color: var(--text-muted); letter-spacing: 0.5px; text-transform: uppercase; }
+.kpi-value { font-family: 'Bebas Neue', sans-serif; font-size: 38px; color: var(--neon); line-height: 1; }
+.kpi-alert .kpi-value { color: var(--danger); }
+
+/* ==========================================================
+   ADMIN — TABLA AFORO (reutiliza .class-card)
+   ========================================================== */
+.aforo-row {
+  background: var(--glass); border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md); padding: 12px 15px; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 13px;
+}
+.aforo-barra-wrap { flex: 1; }
+.aforo-label { font-size: 12px; font-weight: 600; margin-bottom: 5px; display: flex; justify-content: space-between; }
+.aforo-bar-bg { background: rgba(255,255,255,0.07); border-radius: 4px; height: 6px; overflow: hidden; }
+.aforo-bar-fill { height: 100%; border-radius: 4px; transition: width 1s ease; }
+.aforo-fill-ok   { background: var(--neon);    box-shadow: 0 0 8px var(--neon-glow); }
+.aforo-fill-warn { background: var(--warning); box-shadow: 0 0 8px rgba(255,170,0,0.3); }
+.aforo-fill-full { background: var(--danger);  box-shadow: 0 0 8px rgba(255,68,68,0.3); }
+.aforo-pct { font-family: 'Bebas Neue', sans-serif; font-size: 26px; min-width: 52px; text-align: right; line-height: 1; }
+.aforo-pct-ok   { color: var(--neon); }
+.aforo-pct-warn { color: var(--warning); }
+.aforo-pct-full { color: var(--danger); }
+
+/* ==========================================================
+   ADMIN — TABLA DE PAGOS
+   ========================================================== */
+.table-wrap { overflow-x: auto; border-radius: var(--radius-md); border: 1px solid var(--glass-border); }
+.pagos-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pagos-table thead { background: rgba(0,210,255,0.06); }
+.pagos-table th { padding: 11px 14px; text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--neon); border-bottom: 1px solid var(--glass-border); white-space: nowrap; }
+.pagos-table td { padding: 11px 14px; border-bottom: 1px solid rgba(255,255,255,0.04); color: var(--text-primary); white-space: nowrap; }
+.pagos-table tbody tr:last-child td { border-bottom: none; }
+.pagos-table tbody tr:hover td { background: var(--glass-hover); }
+.table-loading { text-align: center; color: var(--text-muted); padding: 20px; }
+.estado-pill { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 20px; letter-spacing: 0.5px; text-transform: uppercase; }
+.estado-vencido   { background: rgba(255,68,68,0.1);   color: var(--danger);  border: 1px solid rgba(255,68,68,0.25); }
+.estado-vence-hoy { background: rgba(255,170,0,0.1);   color: var(--warning); border: 1px solid rgba(255,170,0,0.25); }
+.estado-por-vencer{ background: rgba(0,210,255,0.08);  color: var(--neon);    border: 1px solid rgba(0,210,255,0.2); }
+</style>
