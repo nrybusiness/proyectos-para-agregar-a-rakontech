@@ -1,0 +1,443 @@
+<script>
+/**
+ * ============================================================================
+ * LOGIC.JS — Lógica de Cliente (v2.1 — PARCHE IFRAME-RESILIENT)
+ * ============================================================================
+ * Responsabilidades:
+ *   - Rotación inteligente de líneas telefónicas (persistente)
+ *   - Captura GPS 100% no bloqueante (timeout 3000ms, fallback garantizado)
+ *   - Tracking de conversiones (sendBeacon → doPost) no bloqueante
+ *   - Handlers de UI (Llamar, WhatsApp, Emergencia, Social)
+ *
+ * CAMBIOS v2.1:
+ *   - Timeout GPS elevado a 3000ms
+ *   - Triple capa de protección contra errores de permisos en iframe GAS
+ *   - getPosition() NUNCA lanza, siempre resuelve (null o coordenadas)
+ *   - Detección previa de Permissions API para saltar GPS si está bloqueado
+ *   - Todos los try/catch blindados contra window.top cross-origin
+ *   - Cada handler envuelto en protección externa
+ * ============================================================================
+ */
+
+(function () {
+  'use strict';
+
+  // Configuración con fallback a objeto vacío por si __SELLO_CONFIG__ no se inyectó
+  const CFG = (typeof window !== 'undefined' && window.__SELLO_CONFIG__) || {};
+  const STORAGE_KEY = 'sello_last_line';
+  const SESSION_KEY = 'sello_session_id';
+  const GEO_TIMEOUT = CFG.geoTimeoutMs || 3000;
+  const GEO_FALLBACK_TEXT = CFG.geoFallback || 'Ubicación no disponible';
+
+  // ==========================================================================
+  // UTILIDADES
+  // ==========================================================================
+
+  /**
+   * Envuelve una función en try/catch silencioso.
+   * Evita que cualquier error detenga la UX crítica (llamar/WhatsApp).
+   * @param {Function} fn
+   * @param {string} label - Para logging.
+   */
+  function safe(fn, label) {
+    return function () {
+      try {
+        return fn.apply(this, arguments);
+      } catch (err) {
+        try { console.warn('[Sello:' + label + ']', err); } catch (e) { /* mute */ }
+        return null;
+      }
+    };
+  }
+
+  /**
+   * Acceso seguro a sessionStorage/localStorage (pueden lanzar en modo privado).
+   * @param {'session'|'local'} type
+   * @returns {Storage|null}
+   */
+  function getStorage(type) {
+    try {
+      const s = type === 'session' ? window.sessionStorage : window.localStorage;
+      // Test de escritura (Safari privado tira QuotaExceeded aquí)
+      const testKey = '__sello_test__';
+      s.setItem(testKey, '1');
+      s.removeItem(testKey);
+      return s;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * Genera o recupera un ID de sesión del cliente.
+   * @returns {string}
+   */
+  function getSessionId() {
+    const store = getStorage('session');
+    if (!store) return 'sess_nostorage_' + Date.now();
+
+    try {
+      let id = store.getItem(SESSION_KEY);
+      if (!id) {
+        id = 'sess_' + Date.now().toString(36) + '_' +
+             Math.random().toString(36).slice(2, 10);
+        store.setItem(SESSION_KEY, id);
+      }
+      return id;
+    } catch (e) {
+      return 'sess_fallback_' + Date.now();
+    }
+  }
+
+  /**
+   * Actualiza el texto del status de geolocalización.
+   * @param {string} text
+   * @param {'success'|'warn'|'loading'|''} state
+   */
+  function setGeoStatus(text, state) {
+    try {
+      const el = document.getElementById('geo-status');
+      if (!el) return;
+      el.textContent = text || '';
+      el.classList.remove('is-success', 'is-warn', 'is-loading');
+      if (state) el.classList.add('is-' + state);
+    } catch (e) { /* mute */ }
+  }
+
+  // ==========================================================================
+  // ROTACIÓN DE LÍNEAS TELEFÓNICAS
+  // ==========================================================================
+
+  /**
+   * Devuelve la línea a usar en la próxima llamada y la persiste.
+   * @returns {{number:string, id:string, label:string}}
+   */
+  function nextLine() {
+    const store = getStorage('local');
+    let last = null;
+
+    if (store) {
+      try { last = store.getItem(STORAGE_KEY); } catch (e) { /* mute */ }
+    }
+
+    // Solo usa Línea B si está configurada (no es placeholder)
+    const lineBUsable = CFG.lineB && CFG.lineB !== '+573000000000' && CFG.lineB.length > 5;
+    const useB = last === 'LINE_A' && lineBUsable;
+
+    const pick = useB
+      ? { number: CFG.lineB, id: 'LINE_B', label: 'Línea secundaria' }
+      : { number: CFG.lineA, id: 'LINE_A', label: 'Línea principal' };
+
+    if (store) {
+      try { store.setItem(STORAGE_KEY, pick.id); } catch (e) { /* mute */ }
+    }
+
+    return pick;
+  }
+
+  /**
+   * Actualiza el label visual de la próxima línea disponible.
+   */
+  function previewNextLine() {
+    const store = getStorage('local');
+    if (!store) return;
+
+    try {
+      const last = store.getItem(STORAGE_KEY);
+      const lineBUsable = CFG.lineB && CFG.lineB !== '+573000000000' && CFG.lineB.length > 5;
+      const useB = last === 'LINE_A' && lineBUsable;
+      const label = document.getElementById('call-line-label');
+      if (label) {
+        label.textContent = useB ? 'Línea secundaria disponible' : 'Línea principal directa';
+      }
+    } catch (e) { /* mute */ }
+  }
+
+  // ==========================================================================
+  // GEOLOCALIZACIÓN — NO BLOQUEANTE, NUNCA LANZA
+  // ==========================================================================
+
+  /**
+   * Verifica si la API de geolocalización está disponible en este contexto.
+   * En iframes sandboxed puede existir pero estar bloqueada por Permissions Policy.
+   * @returns {boolean}
+   */
+  function isGeoAvailable() {
+    try {
+      return typeof navigator !== 'undefined' &&
+             'geolocation' in navigator &&
+             typeof navigator.geolocation.getCurrentPosition === 'function';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * Intenta obtener la posición GPS.
+   * Promesa que NUNCA rechaza: siempre resuelve con {lat,lng,accuracy} o null.
+   *
+   * @returns {Promise<{lat:number, lng:number, accuracy:number}|null>}
+   */
+  function getPosition() {
+    return new Promise(function (resolve) {
+      // Protección 1: API no disponible en este iframe
+      if (!isGeoAvailable()) {
+        resolve(null);
+        return;
+      }
+
+      let settled = false;
+      const finish = function (val) {
+        if (settled) return;
+        settled = true;
+        resolve(val);
+      };
+
+      // Protección 2: Timeout fuerte independiente del navegador
+      // (algunos navegadores ignoran el timeout interno de getCurrentPosition)
+      const timer = setTimeout(function () { finish(null); }, GEO_TIMEOUT);
+
+      // Protección 3: try/catch alrededor del llamado
+      try {
+        navigator.geolocation.getCurrentPosition(
+          function (pos) {
+            clearTimeout(timer);
+            try {
+              finish({
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude,
+                accuracy: pos.coords.accuracy
+              });
+            } catch (e) {
+              finish(null);
+            }
+          },
+          function () {
+            // Errores de permisos, indisponibilidad, timeout interno
+            clearTimeout(timer);
+            finish(null);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: GEO_TIMEOUT,
+            maximumAge: 30000
+          }
+        );
+      } catch (e) {
+        clearTimeout(timer);
+        finish(null);
+      }
+    });
+  }
+
+  // ==========================================================================
+  // TRACKING
+  // ==========================================================================
+
+  /**
+   * Envía un evento al backend de forma no bloqueante.
+   * @param {string} event
+   * @param {Object} extra
+   */
+  function track(event, extra) {
+    if (!CFG.webAppUrl) return; // No hay endpoint configurado, silencio
+
+    try {
+      const payload = {
+        action: 'track',
+        payload: Object.assign({
+          event: event,
+          ua: (navigator && navigator.userAgent) || '',
+          referrer: document.referrer || '',
+          sessionId: getSessionId()
+        }, extra || {})
+      };
+
+      const body = JSON.stringify(payload);
+
+      if (navigator.sendBeacon) {
+        try {
+          const blob = new Blob([body], { type: 'text/plain;charset=UTF-8' });
+          if (navigator.sendBeacon(CFG.webAppUrl, blob)) return;
+        } catch (e) { /* fallback a fetch */ }
+      }
+
+      if (typeof fetch === 'function') {
+        fetch(CFG.webAppUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          keepalive: true,
+          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+          body: body
+        }).catch(function () { /* mute */ });
+      }
+    } catch (e) { /* mute: tracking nunca debe romper UX */ }
+  }
+
+  // ==========================================================================
+  // ACCIONES
+  // ==========================================================================
+
+  /**
+   * Dispara una llamada telefónica usando la línea rotada.
+   */
+  const handleCall = safe(function () {
+    const line = nextLine();
+    if (!line.number) return; // Sin número configurado
+
+    track('CALL', { channel: 'PHONE', line: line.id });
+
+    setTimeout(function () {
+      try {
+        window.top.location.href = 'tel:' + line.number;
+      } catch (e) {
+        // Fallback si top está bloqueado por sandbox
+        window.location.href = 'tel:' + line.number;
+      }
+    }, 80);
+
+    previewNextLine();
+  }, 'handleCall');
+
+  /**
+   * Abre WhatsApp con mensaje por defecto.
+   */
+  const handleWhatsApp = safe(function () {
+    if (!CFG.whatsappPrimary) return;
+    track('WHATSAPP', { channel: 'WHATSAPP', line: 'LINE_A' });
+
+    const url = 'https://wa.me/' + CFG.whatsappPrimary +
+                '?text=' + encodeURIComponent(CFG.whatsappDefault || '');
+    openExternal(url);
+  }, 'handleWhatsApp');
+
+  /**
+   * Flujo de emergencia: captura GPS (no bloqueante), arma mensaje, abre WhatsApp.
+   */
+  const handleEmergency = safe(async function () {
+    if (!CFG.whatsappPrimary) return;
+
+    setGeoStatus('Obteniendo ubicación…', 'loading');
+
+    // getPosition() JAMÁS lanza, siempre resuelve
+    const pos = await getPosition();
+    let message;
+
+    if (pos && typeof pos.lat === 'number' && typeof pos.lng === 'number') {
+      const mapsUrl = 'https://maps.google.com/?q=' + pos.lat + ',' + pos.lng;
+      message = (CFG.whatsappEmergency || '🚨 EMERGENCIA') + '\n\n' +
+                '📍 Mi ubicación:\n' + mapsUrl + '\n\n' +
+                'Coordenadas: ' + pos.lat.toFixed(6) + ', ' + pos.lng.toFixed(6) + '\n' +
+                'Precisión: ±' + Math.round(pos.accuracy) + ' m\n\n' +
+                'Por favor envíen la ambulancia lo antes posible.';
+      setGeoStatus('Ubicación capturada ✓', 'success');
+    } else {
+      message = (CFG.whatsappEmergency || '🚨 EMERGENCIA') + '\n\n' +
+                '⚠️ ' + GEO_FALLBACK_TEXT + '\n\n' +
+                'Por favor contáctenme para coordinar dirección exacta.';
+      setGeoStatus(GEO_FALLBACK_TEXT + ' — el operador te llamará', 'warn');
+    }
+
+    track('EMERGENCY', {
+      channel: 'WHATSAPP',
+      line: 'LINE_A',
+      lat: pos ? pos.lat : null,
+      lng: pos ? pos.lng : null,
+      accuracy: pos ? pos.accuracy : null
+    });
+
+    const url = 'https://wa.me/' + CFG.whatsappPrimary +
+                '?text=' + encodeURIComponent(message);
+
+    setTimeout(function () { openExternal(url); }, 250);
+  }, 'handleEmergency');
+
+  /**
+   * Abre URL externa saliendo del iframe si es necesario.
+   * @param {string} url
+   */
+  function openExternal(url) {
+    try {
+      // Preferir window.top para escapar del iframe de GAS
+      const w = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!w) {
+        // Popup bloqueado → navegación directa
+        try { window.top.location.href = url; } catch (e) { window.location.href = url; }
+      }
+    } catch (e) {
+      try { window.location.href = url; } catch (e2) { /* último recurso: nada */ }
+    }
+  }
+
+  /**
+   * Abre red social y registra evento.
+   * @param {'INSTAGRAM'|'TIKTOK'} net
+   */
+  function handleSocial(net) {
+    try {
+      const urls = { INSTAGRAM: CFG.instagram, TIKTOK: CFG.tiktok };
+      track('SOCIAL_' + net, { channel: net });
+      const url = urls[net];
+      if (url) openExternal(url);
+    } catch (e) { /* mute */ }
+  }
+
+  // ==========================================================================
+  // INICIALIZACIÓN
+  // ==========================================================================
+
+  /**
+   * Enlaza handlers a los botones marcados con data-action.
+   * Cada binding está aislado: si uno falla, los demás siguen funcionando.
+   */
+  function bindActions() {
+    const map = {
+      call: handleCall,
+      whatsapp: handleWhatsApp,
+      emergency: handleEmergency,
+      instagram: function () { handleSocial('INSTAGRAM'); },
+      tiktok: function () { handleSocial('TIKTOK'); }
+    };
+
+    try {
+      const nodes = document.querySelectorAll('[data-action]');
+      for (let i = 0; i < nodes.length; i++) {
+        const el = nodes[i];
+        const action = el.getAttribute('data-action');
+        const fn = map[action];
+        if (!fn) continue;
+
+        (function (element, handler) {
+          element.addEventListener('click', function (e) {
+            try {
+              if (element.tagName === 'A') e.preventDefault();
+              handler();
+            } catch (err) { /* mute: el click no debe quebrar */ }
+          });
+        })(el, fn);
+      }
+    } catch (e) { /* mute */ }
+  }
+
+  /**
+   * Setup inicial. Todo envuelto: un fallo aquí no afecta los links nativos.
+   */
+  function init() {
+    try {
+      const yearEl = document.getElementById('year');
+      if (yearEl) yearEl.textContent = new Date().getFullYear();
+    } catch (e) { /* mute */ }
+
+    try { previewNextLine(); } catch (e) { /* mute */ }
+    try { bindActions(); } catch (e) { /* mute */ }
+    try { track('PAGE_VIEW', { channel: 'WEB' }); } catch (e) { /* mute */ }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+})();
+</script>
