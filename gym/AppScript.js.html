@@ -1,0 +1,222 @@
+<script>
+// ==========================================================
+// INICIALIZACIÓN — rutea según vista inyectada por el servidor
+// ==========================================================
+
+document.addEventListener('DOMContentLoaded', function () {
+  if (CURRENT_VIEW === 'admin') {
+    setFechaAdmin();
+    cargarAdmin();
+  } else {
+    setFechaHoy();
+    cargarDashboard();
+  }
+});
+
+function setFechaHoy() {
+  var dias  = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  var meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  var hoy   = new Date();
+  var el    = document.getElementById('fechaHoy');
+  if (el) el.textContent = dias[hoy.getDay()] + ' ' + hoy.getDate() + ' ' + meses[hoy.getMonth()];
+}
+
+function setFechaAdmin() {
+  var dias  = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  var meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  var hoy   = new Date();
+  var el    = document.getElementById('adminFecha');
+  if (el) el.textContent = dias[hoy.getDay()] + ' ' + hoy.getDate() + ' de ' + meses[hoy.getMonth()];
+}
+
+// ==========================================================
+// VISTA ALUMNO
+// ==========================================================
+
+function cargarDashboard() {
+  google.script.run
+    .withSuccessHandler(renderDashboard)
+    .withFailureHandler(handleError)
+    .getDashboardData();
+}
+
+function renderDashboard(data) {
+  if (!data || data.error) { handleError(data ? data.error : 'Sin datos'); return; }
+  renderHeader(data.usuario);
+  renderClases(data.clases);
+  renderRutina(data.rutina);
+}
+
+function renderHeader(u) {
+  var pct = Math.round((u.diasUsados / u.totalDias) * 100);
+  document.getElementById('userNombre').textContent  = u.nombre + ' ' + u.apellido[0] + '.';
+  document.getElementById('userAvatar').textContent  = (u.nombre[0] + u.apellido[0]).toUpperCase();
+  document.getElementById('badgeText').textContent   = 'Membresía Activa — Faltan ' + u.diasRestantes + ' días';
+  document.getElementById('progressLeft').textContent = u.diasUsados + ' días usados';
+  document.getElementById('progressRight').textContent = u.diasRestantes <= 7 ? '¡Renueva pronto!' : u.plan;
+  setTimeout(function () { document.getElementById('progressBar').style.width = pct + '%'; }, 300);
+}
+
+function renderClases(clases) {
+  var container = document.getElementById('clasesContainer');
+  if (!container) return;
+  container.innerHTML = '';
+  clases.forEach(function (c) {
+    var libres    = c.cuposTotal - c.cuposOcupados;
+    var lleno     = libres === 0;
+    var casi      = !lleno && libres <= 2;
+    var pillClass = lleno ? 'cupos-full' : (casi ? 'cupos-warn' : 'cupos-ok');
+    var html = '<div class="class-card' + (lleno ? ' full' : '') + '" id="card-' + c.id + '" onclick="handleReserva(\'' + c.id + '\')">'
+      + (lleno ? '<span class="sold-tag">LLENO</span>' : '')
+      + '<div class="class-time-block"><div class="class-time">' + c.hora + '</div><div class="class-ampm">' + c.ampm + '</div></div>'
+      + '<div class="class-info"><div class="class-name">' + c.nombre + '</div><div class="class-instructor">' + c.instructor + '</div></div>'
+      + '<div class="class-right">'
+      + '<span class="cupos-pill ' + pillClass + '" id="cupos-' + c.id + '">' + c.cuposOcupados + '/' + c.cuposTotal + ' cupos</span>'
+      + '<button class="btn-reservar ' + (lleno ? 'btn-disabled' : 'btn-volt') + '" id="btn-' + c.id + '" ' + (lleno ? 'disabled' : '') + '>' + (lleno ? 'Lleno' : 'Reservar') + '</button>'
+      + '</div></div>';
+    container.insertAdjacentHTML('beforeend', html);
+  });
+}
+
+function renderRutina(rutina) {
+  var subtitle = document.getElementById('rutinaSubtitle');
+  if (subtitle) subtitle.textContent = rutina.categoria + ' · ' + rutina.dia;
+  var ejerciciosHtml = rutina.ejercicios.map(function (ej) {
+    return '<div class="exercise-row">'
+      + '<div class="ex-num">' + ej.numero + '</div>'
+      + '<div class="ex-name">' + ej.nombre + '</div>'
+      + '<div class="ex-sets">' + ej.series + '</div>'
+      + '<div class="' + (ej.completado ? 'check-circle done' : 'check-circle') + '" onclick="toggleEjercicio(this)"></div>'
+      + '</div>';
+  }).join('');
+  var html = '<div class="rutina-card">'
+    + '<div class="rutina-header"><div class="rutina-icon">💪</div>'
+    + '<div><div class="rutina-meta-title">' + rutina.nombre + '</div>'
+    + '<div class="rutina-meta-sub">' + rutina.ejercicios.length + ' ejercicios · ~' + rutina.duracionMin + ' min · ' + rutina.categoria + '</div></div></div>'
+    + '<div class="rutina-body">' + ejerciciosHtml + '</div></div>';
+  var container = document.getElementById('rutinaContainer');
+  if (container) container.innerHTML = html;
+}
+
+// ==========================================================
+// VISTA ADMIN
+// ==========================================================
+
+function cargarAdmin() {
+  google.script.run
+    .withSuccessHandler(renderAdmin)
+    .withFailureHandler(handleError)
+    .getAdminData();
+}
+
+/**
+ * Renderiza el panel completo de administración.
+ * @param {{pagosPendientes: Array, clases: Array}} data
+ */
+function renderAdmin(data) {
+  if (!data || data.error) { handleError(data ? data.error : 'Sin datos admin'); return; }
+  renderKpis(data.pagosPendientes, data.clases);
+  renderAforo(data.clases);
+  renderPagos(data.pagosPendientes);
+}
+
+function renderKpis(pagos, clases) {
+  var vencidos    = pagos.filter(function (p) { return p.estado === 'vencido'; }).length;
+  var cuposLibres = clases.reduce(function (acc, c) { return acc + (c.cuposTotal - c.cuposOcupados); }, 0);
+  var elV = document.getElementById('kpiVencidos');
+  var elC = document.getElementById('kpiCuposLibres');
+  if (elV) elV.textContent = vencidos;
+  if (elC) elC.textContent = cuposLibres;
+}
+
+function renderAforo(clases) {
+  var container = document.getElementById('aforoContainer');
+  if (!container) return;
+  container.innerHTML = '';
+  clases.forEach(function (c) {
+    var pct      = Math.round((c.cuposOcupados / c.cuposTotal) * 100);
+    var lleno    = c.cuposOcupados >= c.cuposTotal;
+    var casi     = !lleno && (c.cuposTotal - c.cuposOcupados) <= 2;
+    var colorKey = lleno ? 'full' : (casi ? 'warn' : 'ok');
+    var html = '<div class="aforo-row">'
+      + '<div class="class-time-block"><div class="class-time">' + c.hora + '</div><div class="class-ampm">' + c.ampm + '</div></div>'
+      + '<div class="aforo-barra-wrap">'
+      + '<div class="aforo-label"><span>' + c.nombre + '</span><span>' + c.cuposOcupados + '/' + c.cuposTotal + '</span></div>'
+      + '<div class="aforo-bar-bg"><div class="aforo-bar-fill aforo-fill-' + colorKey + '" style="width:' + pct + '%"></div></div>'
+      + '</div>'
+      + '<div class="aforo-pct aforo-pct-' + colorKey + '">' + pct + '%</div>'
+      + '</div>';
+    container.insertAdjacentHTML('beforeend', html);
+  });
+}
+
+function renderPagos(pagos) {
+  var tbody    = document.getElementById('pagosBody');
+  var countEl  = document.getElementById('countPagos');
+  if (!tbody) return;
+  if (countEl) countEl.textContent = pagos.length + ' registros';
+  var estadoLabels = { 'vencido': 'Vencido', 'vence-hoy': 'Vence hoy', 'por-vencer': 'Por vencer' };
+  tbody.innerHTML = pagos.map(function (p) {
+    return '<tr>'
+      + '<td style="font-weight:600">' + p.nombre + '</td>'
+      + '<td style="color:var(--text-muted)">' + p.plan + '</td>'
+      + '<td style="color:var(--text-muted)">' + p.vence + '</td>'
+      + '<td style="font-weight:600">' + p.monto + '</td>'
+      + '<td><span class="estado-pill estado-' + p.estado + '">' + estadoLabels[p.estado] + '</span></td>'
+      + '</tr>';
+  }).join('');
+}
+
+// ==========================================================
+// INTERACCIONES COMPARTIDAS
+// ==========================================================
+
+function handleReserva(claseId) {
+  var card = document.getElementById('card-' + claseId);
+  if (!card || card.classList.contains('full')) return;
+  var btn = document.getElementById('btn-' + claseId);
+  if (!btn || btn.disabled) return;
+  btn.textContent = '...';
+  btn.disabled = true;
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (res.success) {
+        btn.className = 'btn-reservar btn-confirmed';
+        btn.textContent = '✓ Reservado';
+        card.classList.add('reservado');
+        showToast(res.mensaje, 'success');
+      } else {
+        btn.textContent = 'Reservar';
+        btn.disabled = false;
+        showToast(res.mensaje, 'error');
+      }
+    })
+    .withFailureHandler(function () {
+      btn.textContent = 'Reservar';
+      btn.disabled = false;
+      showToast('Error de conexión.', 'error');
+    })
+    .reservarClase(claseId);
+}
+
+function toggleEjercicio(el) { el.classList.toggle('done'); }
+
+function abrirRenovacion() {
+  var url = 'https://wa.me/573XXXXXXXXX?text=' + encodeURIComponent('Hola Catherine, quiero renovar mi mensualidad 💪');
+  window.open(url, '_blank');
+}
+
+function showToast(mensaje, tipo) {
+  var t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = mensaje;
+  t.className = 'toast toast-' + (tipo || '');
+  setTimeout(function () { t.classList.add('show'); }, 10);
+  setTimeout(function () { t.classList.remove('show'); }, 3200);
+}
+
+function handleError(error) {
+  console.error('R3GIMEN error:', error);
+  showToast('No se pudo cargar la información.', 'error');
+}
+</script>
