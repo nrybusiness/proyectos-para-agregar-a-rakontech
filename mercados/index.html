@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>POS - Minimercado</title>
+    <style>
+        :root { --primary: #007bff; --bg: #f4f6f9; --border: #dee2e6; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: var(--bg); margin: 0; padding: 20px; display: flex; gap: 20px; height: 100vh; box-sizing: border-box; }
+        
+        .catalogo { flex: 2; display: flex; flex-direction: column; gap: 15px; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .buscador input { width: 100%; padding: 15px; font-size: 18px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; }
+        .categorias { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px; }
+        .btn-categoria { padding: 10px 20px; background: #e9ecef; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; white-space: nowrap; }
+        .btn-categoria.activa { background: var(--primary); color: white; }
+        
+        .grid-productos { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 15px; overflow-y: auto; align-content: start; }
+        .producto-card { background: #fff; border: 2px solid var(--border); border-radius: 8px; padding: 15px; text-align: center; cursor: pointer; transition: 0.2s; display: flex; flex-direction: column; justify-content: center; height: 80px; }
+        .producto-card:hover { border-color: var(--primary); background: #e6f2ff; }
+        .prod-nombre { font-size: 14px; font-weight: bold; color: #333; margin-bottom: 5px;}
+        .prod-precio { font-size: 16px; color: #28a745; font-weight: bold; }
+
+        .carrito { flex: 1; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+        .lista-carrito { flex-grow: 1; overflow-y: auto; margin-bottom: 20px; }
+        .item-carrito { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+        .item-info { font-size: 16px; font-weight: bold; }
+        .item-controles button { background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; }
+        
+        .total-box { background: #343a40; color: white; padding: 15px; border-radius: 8px; font-size: 24px; font-weight: bold; text-align: right; margin-bottom: 15px; }
+        .btn-cobrar { background: #28a745; color: white; border: none; padding: 15px; font-size: 20px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; transition: 0.2s; }
+        .btn-cobrar:hover { background: #218838; }
+        .btn-cobrar:disabled { background: #6c757d; cursor: not-allowed; }
+
+        #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); justify-content: center; align-items: center; font-size: 24px; font-weight: bold; z-index: 1000; }
+    </style>
+</head>
+<body>
+
+    <div id="overlay">Cargando datos... ⏳</div>
+
+    <div class="catalogo">
+        <div class="buscador">
+            <input type="text" id="inputBusqueda" placeholder="🔍 Buscar producto por nombre..." onkeyup="filtrarProductos()">
+        </div>
+        <div class="categorias" id="contenedorCategorias"></div>
+        <div class="grid-productos" id="gridProductos"></div>
+    </div>
+
+    <div class="carrito">
+        <h2 style="margin-top:0;">🧾 Ticket Actual</h2>
+        <div class="lista-carrito" id="listaCarrito"></div>
+        <div class="total-box">Total: $<span id="granTotal">0</span></div>
+        <button class="btn-cobrar" id="btnCobrar" onclick="finalizarCompra()" disabled>💰 FACTURAR</button>
+    </div>
+
+    <script>
+        let baseDatos = [];
+        let carrito = [];
+        let categoriaActiva = "Todas";
+
+        function inicializarSistema() {
+            mostrarCarga(true, "Cargando catálogo desde Google Sheets... ⏳");
+            google.script.run.withSuccessHandler(datos => {
+                baseDatos = datos;
+                renderizarCategorias();
+                renderizarProductos(baseDatos);
+                mostrarCarga(false);
+                document.getElementById("inputBusqueda").focus();
+            }).obtenerCatalogo();
+        }
+
+        function renderizarCategorias() {
+            const cont = document.getElementById("contenedorCategorias");
+            const categoriasUnicas = ["Todas", ...new Set(baseDatos.map(p => p.categoria))];
+            cont.innerHTML = categoriasUnicas.map(cat => `
+                <button class="btn-categoria ${cat === categoriaActiva ? 'activa' : ''}" 
+                        onclick="cambiarCategoria('${cat}')">${cat}</button>
+            `).join("");
+        }
+
+        function cambiarCategoria(cat) {
+            categoriaActiva = cat;
+            document.getElementById("inputBusqueda").value = ""; 
+            renderizarCategorias();
+            renderizarProductos(cat === "Todas" ? baseDatos : baseDatos.filter(p => p.categoria === cat));
+        }
+
+        function filtrarProductos() {
+            categoriaActiva = "Todas";
+            renderizarCategorias();
+            const texto = document.getElementById("inputBusqueda").value.toLowerCase();
+            renderizarProductos(baseDatos.filter(p => p.nombre.toLowerCase().includes(texto)));
+        }
+
+        function renderizarProductos(productos) {
+            const cont = document.getElementById("gridProductos");
+            cont.innerHTML = productos.map(p => `
+                <div class="producto-card" onclick="agregarAlCarrito('${p.id}')">
+                    <div class="prod-nombre">${p.nombre}</div>
+                    <div class="prod-precio">$${p.precio}</div>
+                </div>
+            `).join("");
+        }
+
+        function agregarAlCarrito(id) {
+            const prod = baseDatos.find(p => p.id == id);
+            const itemExistente = carrito.find(item => item.id == id);
+            
+            if (itemExistente) itemExistente.cantidad++;
+            else carrito.push({ ...prod, cantidad: 1 });
+            
+            actualizarCarrito();
+        }
+
+        function removerDelCarrito(id) {
+            carrito = carrito.filter(item => item.id != id);
+            actualizarCarrito();
+        }
+
+        function actualizarCarrito() {
+            const lista = document.getElementById("listaCarrito");
+            let total = 0;
+
+            lista.innerHTML = carrito.map(item => {
+                const subtotal = item.precio * item.cantidad;
+                total += subtotal;
+                return `
+                    <div class="item-carrito">
+                        <div class="item-info"><span style="color:#007bff">${item.cantidad}x</span> ${item.nombre} <br><small>$${item.precio} c/u</small></div>
+                        <div class="item-info">$${subtotal}</div>
+                        <div class="item-controles"><button onclick="removerDelCarrito('${item.id}')">X</button></div>
+                    </div>
+                `;
+            }).join("");
+
+            document.getElementById("granTotal").innerText = total.toLocaleString('es-CO');
+            document.getElementById("btnCobrar").disabled = carrito.length === 0;
+        }
+
+        function finalizarCompra() {
+            if(carrito.length === 0) return;
+            mostrarCarga(true, "Registrando venta... 💳");
+            
+            google.script.run.withSuccessHandler(res => {
+                mostrarCarga(false);
+                if(res.success) {
+                    carrito = [];
+                    actualizarCarrito();
+                } else {
+                    alert("Error: " + res.mensaje);
+                }
+            }).procesarVenta(carrito);
+        }
+
+        function mostrarCarga(mostrar, texto) {
+            const overlay = document.getElementById('overlay');
+            if(mostrar) {
+                overlay.innerText = texto;
+                overlay.style.display = 'flex';
+            } else {
+                overlay.style.display = 'none';
+            }
+        }
+
+        window.onload = inicializarSistema;
+    </script>
+</body>
+</html>
