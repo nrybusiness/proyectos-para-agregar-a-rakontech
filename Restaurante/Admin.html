@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin POS - Hunger Burgers</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Quicksand:wght@400;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = { theme: { extend: { colors: { base: '#F7E4B2', oscuro: '#3D2B1F', acento: '#C78D2B', danger: '#dc3545' }, fontFamily: { sans: ['Quicksand', 'sans-serif'], display: ['Fredoka One', 'cursive'] } } } }
+  </script>
+  <style>
+    body { background-color: #f8f9fa; font-family: 'Quicksand', sans-serif; margin: 0; padding: 0; }
+    .font-display { font-family: 'Fredoka One', cursive; font-weight: normal; }
+    
+    @keyframes parpadeoAlerta { 0% { opacity: 1; } 50% { opacity: 0.85; } 100% { opacity: 1; } }
+    @keyframes parpadeoRush { 0% { box-shadow: 0 0 5px rgba(220,53,69,0.4); border-color: #dc3545; } 50% { box-shadow: 0 0 20px rgba(220,53,69,1); border-color: #ff4d4d; } 100% { box-shadow: 0 0 5px rgba(220,53,69,0.4); border-color: #dc3545; } }
+    .rush-ticket { border-width: 3px; border-top-width: 8px; animation: parpadeoRush 1.5s infinite; }
+    
+    .scroll-hide::-webkit-scrollbar { display: none; }
+    .scroll-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+    /* Modales */
+    #loadingOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.9); display: none; justify-content: center; align-items: center; font-size: 1.5em; font-weight: bold; z-index: 9999; flex-direction: column; gap:15px; color: #C78D2B; }
+    .loader { border-top-color: #C78D2B; -webkit-animation: spinner 1s linear infinite; animation: spinner 1s linear infinite; }
+    @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center; padding: 15px;}
+    
+    /* Toggle Switch CSS para Consola Promos */
+    .toggle-checkbox:checked { right: 0; border-color: #10B981; }
+    .toggle-checkbox:checked + .toggle-label { background-color: #10B981; }
+  </style>
+</head>
+<body class="antialiased pb-12">
+
+  <header class="bg-[#212529] text-white p-4 shadow-md flex justify-between items-center border-b-4 border-acento sticky top-0 z-50">
+    <div class="flex items-center gap-3">
+      <img src="https://humgerimages.carrd.co/assets/images/image06.png?v=9dc15a34" alt="Mascota" class="h-10">
+      <h1 class="text-2xl font-display tracking-widest text-white">🍔 Hunger Admin / POS</h1>
+    </div>
+    <div class="bg-green-600 px-4 py-2 rounded-lg font-bold text-sm shadow-inner flex items-center gap-2 cursor-default">
+      <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span> Alarma ON
+    </div>
+  </header>
+
+  <div class="bg-[#343a40] p-3 flex flex-wrap gap-3 justify-center items-center shadow-inner">
+    <button onclick="abrirModalPOS()" class="bg-green-600 text-white px-5 py-2.5 rounded-lg font-bold shadow hover:bg-green-700 transition">📝 Tomar Pedido POS</button>
+    <button onclick="abrirModalCompras()" class="bg-blue-600 text-white px-5 py-2.5 rounded-lg font-bold shadow hover:bg-blue-700 transition">🛒 Compras</button>
+    <button onclick="abrirModalMermas()" class="bg-yellow-500 text-[#212529] px-5 py-2.5 rounded-lg font-bold shadow hover:bg-yellow-400 transition">🗑️ Mermas</button>
+    <button onclick="confirmarCierre()" class="bg-danger text-white px-5 py-2.5 rounded-lg font-bold shadow hover:bg-red-700 transition">📅 Cierre Turno</button>
+    
+    <button onclick="abrirModalPromos()" class="bg-purple-600 text-white px-5 py-2.5 rounded-lg font-bold shadow hover:bg-purple-700 transition border border-purple-800 animate-pulse">🕹️ Consola Promos</button>
+
+    <div class="flex items-center gap-2 bg-[#212529] px-3 py-2 rounded-lg border border-[#495057] ml-auto">
+       <span class="text-xs font-bold text-gray-300">ESTADO APP:</span>
+       <select id="estadoLocalSelect" onchange="cambiarEstadoLocal(this.value)" class="bg-[#343a40] text-white text-xs font-bold px-2 py-1 rounded border border-[#6c757d] cursor-pointer outline-none">
+          <option value="AUTO">🤖 AUTO (5PM - 1AM)</option>
+          <option value="ABIERTO">✅ FORZAR ABIERTO</option>
+          <option value="CERRADO">❌ FORZAR CERRADO</option>
+       </select>
+    </div>
+  </div>
+
+  <div class="max-w-7xl mx-auto px-4 pt-6">
+    <div id="alertaInventario" class="bg-danger text-white p-3 text-center font-bold rounded-lg border-2 border-red-800 shadow-lg" style="display:none; animation: parpadeoAlerta 2s infinite;"></div>
+  </div>
+
+  <div class="p-6 max-w-full mx-auto flex flex-wrap gap-6 justify-center items-start" id="ticketsContainer">
+    <div class="w-full flex flex-col items-center justify-center mt-10">
+      <img src="https://humgerimages.carrd.co/assets/images/image18.png?v=9dc15a34" class="h-32 drop-shadow-xl mb-4 animate-pulse">
+      <h3 class="text-gray-500 font-bold text-xl">Cargando pedidos...</h3>
+    </div>
+  </div>
+
+  <audio id="sonidoAlarma" preload="auto">
+  <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
+  <source src="https://notificationsounds.com/storage/sounds/file-sounds-1150-pristine.mp3" type="audio/mpeg">
+  </audio>
+
+  <div id="loadingOverlay">
+    <div class="loader rounded-full border-4 border-t-4 border-gray-200 h-16 w-16 mb-4"></div>
+    Procesando petición...
+  </div>
+
+  <div id="modalPromos" class="modal-overlay">
+    <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center border-4 border-purple-600 relative overflow-hidden">
+      <div class="flex justify-between items-center mb-6 relative">
+        <h2 class="text-2xl font-display text-oscuro w-full">🕹️ Gamificación</h2>
+        <button onclick="cerrarModalPromos()" class="absolute right-0 text-3xl text-gray-500 hover:text-danger leading-none">×</button>
+      </div>
+
+      <div class="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-4 mb-6">
+        <div class="flex justify-between items-center">
+            <div class="text-left">
+                <p class="font-bold text-oscuro">Subasta Inversa 📉</p>
+                <p class="text-xs text-gray-500">Descuento en carrito inactivo</p>
+            </div>
+            <div class="relative inline-block w-12 mr-2 align-middle select-none transition duration-200 ease-in">
+                <input type="checkbox" id="toggleSubasta" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+                <label for="toggleSubasta" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+            </div>
+        </div>
+        <hr class="border-gray-200">
+        <div class="flex justify-between items-center">
+            <div class="text-left">
+                <p class="font-bold text-oscuro">Cabra de Oro 🐐</p>
+                <p class="text-xs text-gray-500">Aparición aleatoria 3%</p>
+            </div>
+            <div class="relative inline-block w-12 mr-2 align-middle select-none transition duration-200 ease-in">
+                <input type="checkbox" id="toggleCabra" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+                <label for="toggleCabra" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+            </div>
+        </div>
+      </div>
+
+      <button onclick="guardarCambiosPromos()" class="w-full bg-oscuro text-white py-3 rounded-lg font-bold hover:bg-gray-800 shadow mb-6">💾 Guardar Cambios</button>
+
+      <div class="bg-red-50 p-4 rounded-xl border-2 border-red-200">
+          <p class="font-bold text-danger mb-2 font-display text-lg">⚠️ ESTAMPIDA GLOBAL</p>
+          <p class="text-xs text-red-800 mb-4 font-bold">Garantiza la aparición de la Cabra a TODOS los clientes conectados en los próximos 5 minutos.</p>
+          <button onclick="lanzarEstampida()" class="w-full bg-danger text-white py-3 rounded-lg font-bold hover:bg-red-700 shadow flex justify-center gap-2 items-center">
+              <span>🚀 LANZAR AHORA</span>
+          </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modalPOS" class="modal-overlay">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[95vh] flex flex-col overflow-hidden">
+      <div class="flex justify-between items-center p-5 border-b-2 border-gray-200">
+        <h2 id="tituloModalPOS" class="text-2xl font-display text-oscuro m-0">📝 Nuevo Pedido POS</h2>
+        <button onclick="cerrarModalPOS()" class="text-3xl text-danger font-bold hover:text-red-800 leading-none">×</button>
+      </div>
+      
+      <div class="flex flex-col md:flex-row flex-grow overflow-hidden bg-gray-50">
+        <div class="flex-2 w-full md:w-2/3 flex flex-col p-5 border-r md:border-gray-300">
+          <div class="flex justify-between border-b-2 border-gray-200 mb-4 pb-2 text-sm font-bold text-gray-500">
+            <span id="tab1" class="cursor-pointer transition">1. Cliente</span>
+            <span id="tab2" class="cursor-pointer transition">2. Comida</span>
+            <span id="tab3" class="cursor-pointer transition">3. Extras</span>
+            <span id="tab4" class="cursor-pointer transition">4. Bebidas</span>
+          </div>
+
+          <input type="text" id="buscadorUniversal" class="w-full p-3 rounded-lg border border-gray-300 mb-4 focus:outline-none focus:border-blue-500 shadow-sm" style="display:none;" placeholder="🔍 Buscar producto rápido..." onkeyup="buscarUniversalPOS(this.value)">
+          <div id="gridBusquedaUniversal" class="grid grid-cols-2 md:grid-cols-4 gap-3 overflow-y-auto scroll-hide mb-4" style="display:none;"></div>
+
+          <div id="step1" class="flex-grow overflow-y-auto scroll-hide">
+            <div class="bg-white p-5 rounded-xl border border-gray-200 flex flex-col gap-4 shadow-sm">
+              <input type="text" id="posCliente" placeholder="Nombre del Cliente*" class="w-full p-3 rounded-lg border border-gray-300 focus:outline-none focus:border-blue-500">
+              <input type="tel" id="posCelular" placeholder="Celular (Opcional)" class="w-full p-3 rounded-lg border border-gray-300 focus:outline-none focus:border-blue-500">
+              <div class="flex gap-3">
+                  <select id="posTipo" class="w-full p-3 rounded-lg border border-gray-300 bg-white" onchange="cambiarTipoPedido()">
+                     <option value="LOCAL">📍 Local (Comedor) ⚡ Prioridad</option>
+                     <option value="PARA LLEVAR">🛍️ Para Llevar</option>
+                     <option value="DOMICILIO">🛵 Domicilio</option>
+                  </select>
+                  <select id="posPago" class="w-full p-3 rounded-lg border border-gray-300 bg-white">
+                     <option value="EFECTIVO">💵 Efectivo</option>
+                     <option value="NEQUI">📱 Nequi</option>
+                  </select>
+              </div>
+              <input type="text" id="posDireccion" placeholder="Dirección exacta (Solo Domicilios)" class="w-full p-3 rounded-lg border border-gray-300 focus:outline-none focus:border-blue-500">
+              <input type="text" id="posNotas" placeholder="Notas Generales del Pedido" class="w-full p-3 rounded-lg border border-gray-300 focus:outline-none focus:border-blue-500">
+            </div>
+          </div>
+
+          <div id="step2" class="step-grid flex-grow overflow-y-auto scroll-hide" style="display:none;">
+            <div id="gridPrincipal" class="grid grid-cols-2 md:grid-cols-4 gap-3 pb-4"></div>
+          </div>
+          <div id="step3" class="step-grid flex-grow overflow-y-auto scroll-hide" style="display:none;">
+            <div id="gridExtras" class="grid grid-cols-2 md:grid-cols-4 gap-3 pb-4"></div>
+            <div class="text-center mt-4"><button class="w-full bg-purple-600 text-white py-3 rounded-lg font-bold shadow hover:bg-purple-700" onclick="agregarItemManualPOS()">➕ Añadir Ítem Manual</button></div>
+          </div>
+          <div id="step4" class="step-grid flex-grow overflow-y-auto scroll-hide" style="display:none;">
+            <div id="gridBebidas" class="grid grid-cols-2 md:grid-cols-4 gap-3 pb-4"></div>
+          </div>
+
+          <div class="mt-4 pt-4 border-t-2 border-gray-200 flex justify-between">
+            <button id="btnPrevPOS" class="bg-danger text-white px-6 py-2.5 rounded-lg font-bold hover:bg-red-700 shadow" style="visibility:hidden;" onclick="cambiarPasoPOS(-1)">⬅️ Atrás</button>
+            <button id="btnNextPOS" class="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-bold hover:bg-blue-700 shadow" onclick="cambiarPasoPOS(1)">Siguiente ➡️</button>
+          </div>
+        </div>
+
+        <div class="flex-1 w-full md:w-1/3 p-5 flex flex-col bg-white">
+          <h3 class="font-bold text-lg border-b-2 border-gray-800 pb-2 mb-3">🛒 Tu Carrito</h3>
+          <div class="flex-grow overflow-y-auto scroll-hide pr-2">
+              <table class="w-full text-sm text-left">
+                <thead><tr class="text-gray-500 border-b border-gray-200"><th class="pb-2 w-1/4">Cant</th><th class="pb-2">Producto</th><th class="pb-2 text-right">Total</th><th></th></tr></thead>
+                <tbody id="bodyCarritoPOS" class="divide-y divide-gray-100"></tbody>
+              </table>
+          </div>
+          <div class="mt-4 bg-gray-100 p-3 rounded-lg flex justify-between items-center border border-gray-300">
+            <span class="font-bold text-gray-600">TOTAL:</span>
+            <span class="text-2xl font-display text-oscuro">$<span id="totalPOS">0</span></span>
+          </div>
+          <button id="btnEnviarPOS" class="w-full mt-4 bg-green-600 text-white py-4 rounded-lg font-bold text-lg shadow-md hover:bg-green-700 transition" onclick="enviarPedidoPOS()">🚀 Enviar Pedido a Cocina</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modalCierre" class="modal-overlay">
+    <div class="bg-white rounded-xl shadow-2xl p-8 max-w-sm w-full text-center">
+      <div class="flex justify-between items-center mb-6 relative">
+        <h2 class="text-2xl font-display text-oscuro w-full">📊 Resumen Turno</h2>
+        <button onclick="cerrarModalCierre()" class="absolute right-0 text-2xl text-gray-500 hover:text-danger">×</button>
+      </div>
+      <div class="text-left text-lg space-y-3 mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+        <p class="flex justify-between"><span>✅ Entregados:</span> <strong id="resVentas"></strong></p>
+        <p class="flex justify-between text-green-700"><span>💰 Ingresos:</span> <strong id="resTotal"></strong></p>
+        <p class="flex justify-between text-blue-700"><span>📈 Utilidad:</span> <strong id="resUtilidad"></strong></p>
+        <p class="flex justify-between text-danger"><span>❌ Anulados:</span> <strong id="resAnulados"></strong></p>
+        <hr class="my-2 border-gray-300">
+        <h4 class="font-bold text-sm text-gray-500 uppercase">Desglose Pago:</h4>
+        <ul id="resPagos" class="text-sm space-y-1 pl-2"></ul>
+      </div>
+      <button class="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow" onclick="cerrarModalCierre()">Aceptar y Continuar</button>
+    </div>
+  </div>
+
+  <div id="modalCompras" class="modal-overlay">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col p-6">
+      <div class="flex justify-between items-center border-b-2 border-gray-200 pb-3 mb-4">
+        <h2 class="text-2xl font-display text-oscuro m-0">🛒 Registro de Compras</h2>
+        <button onclick="cerrarModalCompras()" class="text-3xl text-danger font-bold hover:text-red-800 leading-none">×</button>
+      </div>
+      <div class="flex flex-col md:flex-row gap-6 flex-grow overflow-hidden">
+        <div class="flex-2 w-full md:w-1/2 flex flex-col pr-0 md:pr-4 md:border-r border-gray-200">
+          <input type="text" id="buscadorInsumos" class="w-full p-3 rounded-lg border border-gray-300 mb-4 focus:border-blue-500 outline-none shadow-sm" placeholder="🔍 Buscar insumo para surtir..." onkeyup="filtrarCatalogo()">
+          <div id="contenedorBotonesInsumos" class="grid grid-cols-2 lg:grid-cols-3 gap-3 overflow-y-auto scroll-hide pb-4"></div>
+        </div>
+        <div class="flex-1 w-full md:w-1/2 flex flex-col bg-gray-50 p-4 rounded-xl border border-gray-200">
+          <table class="w-full text-sm text-left">
+            <thead><tr class="border-b border-gray-300 text-gray-500"><th class="pb-2">Insumo</th><th class="pb-2">Cant.</th><th class="pb-2 text-right">Total</th><th></th></tr></thead>
+            <tbody id="bodyCarrito" class="divide-y divide-gray-200"></tbody>
+          </table>
+          <div class="mt-auto pt-4 flex justify-between items-center border-t border-gray-300">
+            <strong class="text-gray-600">TOTAL:</strong>
+            <span class="text-2xl font-display text-oscuro">$<span id="totalCarritoTexto">0</span></span>
+          </div>
+          <button class="w-full mt-4 bg-green-600 text-white py-3 rounded-lg font-bold shadow hover:bg-green-700" onclick="enviarLoteCompras()">✅ Procesar Todo el Carrito</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modalMermas" class="modal-overlay">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col p-6">
+      <div class="flex justify-between items-center border-b-2 border-gray-200 pb-3 mb-4">
+        <h2 class="text-2xl font-display text-oscuro m-0">🗑️ Mermas y Bajas</h2>
+        <button onclick="cerrarModalMermas()" class="text-3xl text-danger font-bold hover:text-red-800 leading-none">×</button>
+      </div>
+      <div class="flex flex-col md:flex-row gap-6 flex-grow overflow-hidden">
+        <div class="flex-2 w-full md:w-1/2 flex flex-col pr-0 md:pr-4 md:border-r border-gray-200">
+          <input type="text" id="buscadorMermas" class="w-full p-3 rounded-lg border border-gray-300 mb-4 focus:border-yellow-500 outline-none shadow-sm" placeholder="🔍 Buscar insumo a dar de baja..." onkeyup="filtrarMermas()">
+          <div id="contenedorBotonesMermas" class="grid grid-cols-2 lg:grid-cols-3 gap-3 overflow-y-auto scroll-hide pb-4"></div>
+        </div>
+        <div class="flex-1 w-full md:w-1/2 flex flex-col bg-gray-50 p-4 rounded-xl border border-gray-200">
+          <table class="w-full text-sm text-left">
+            <thead><tr class="border-b border-gray-300 text-gray-500"><th class="pb-2">Insumo</th><th class="pb-2">Cant</th><th class="pb-2">Motivo</th><th></th></tr></thead>
+            <tbody id="bodyCarritoMermas" class="divide-y divide-gray-200"></tbody>
+          </table>
+          <button class="w-full mt-auto bg-danger text-white py-3 rounded-lg font-bold shadow hover:bg-red-700" onclick="enviarLoteMermas()">✅ Confirmar Baja</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modalReceta" class="modal-overlay">
+    <div class="bg-[#212529] text-base p-6 rounded-xl max-w-sm w-full shadow-2xl border border-[#495057]">
+      <div class="flex justify-between items-center border-b border-[#343a40] pb-3 mb-4">
+        <h2 id="tituloReceta" class="text-xl font-display text-white m-0">📖 Receta</h2>
+        <button onclick="cerrarModalReceta()" class="text-2xl text-danger font-bold hover:text-red-400 transition">×</button>
+      </div>
+      <div id="contenidoReceta" class="text-sm font-semibold space-y-2 text-white"></div>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // [MÓDULO 04] - VARIABLES GLOBALES Y NÚCLEO
+    // ==========================================
+    const esAdmin = true;
+
+    window.onload = () => { cargarSistemaCentral(); cargarEstadoLocal(); };
+
+    let ticketsConocidos = []; let alarmasActivadas = true; let audioDesbloqueado = false; let primeraCarga = true; 
+    let catalogoGlobal = []; let carritoCompras = []; let carritoMermas = []; let menuPOSGlobal = []; let carritoPOS = [];
+    let arrPrincipales = []; let arrBebidas = []; let arrExtras = []; let pasoActualPOS = 1;
+    let idPedidoEnEdicion = null; let datosKDSGlobal = [];
+
+    function errorServidor(e) { document.getElementById('loadingOverlay').style.display = 'none'; alert("❌ Error: " + (e.message || e)); }
+
+    function cargarEstadoLocal() {
+      if (typeof google !== 'undefined') {
+        google.script.run.withSuccessHandler(res => {
+          let sel = document.getElementById('estadoLocalSelect');
+          if(sel) {
+            sel.value = res || 'AUTO';
+            if(res === 'CERRADO') sel.classList.add('text-danger');
+            else if(res === 'ABIERTO') sel.classList.add('text-green-500');
+            else sel.classList.remove('text-danger', 'text-green-500');
+          }
+        }).obtenerEstadoLocal();
+      }
+    }
+
+    function cambiarEstadoLocal(estado) {
+      document.getElementById('loadingOverlay').style.display = 'flex';
+      if (typeof google !== 'undefined') {
+        google.script.run.withFailureHandler(errorServidor).withSuccessHandler(res => {
+          document.getElementById('loadingOverlay').style.display = 'none';
+          let sel = document.getElementById('estadoLocalSelect');
+          sel.classList.remove('text-danger', 'text-green-500');
+          if(estado === 'CERRADO') sel.classList.add('text-danger');
+          else if(estado === 'ABIERTO') sel.classList.add('text-green-500');
+        }).fijarEstadoLocal(estado);
+      }
+    }
+
+    // ==========================================
+    // [MÓDULO 05] - MOTOR DE AUDIO Y ALARMAS
+    // ==========================================
+    document.body.addEventListener('click', function() {
+      if (!audioDesbloqueado) {
+        const audio = document.getElementById('sonidoAlarma'); audio.volume = 0; let playPromise = audio.play();
+        if (playPromise !== undefined) { playPromise.then(() => { audio.pause(); audio.currentTime = 0; audio.volume = 1.0; audioDesbloqueado = true; }).catch(e => console.log(e)); }
+      }
+    });
+
+    function dispararAlarma() {
+      if (!alarmasActivadas || !audioDesbloqueado) return;
+      const audio = document.getElementById('sonidoAlarma');
+      audio.currentTime = 0;
+      let playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(error => {
+          console.error("Fallo audio externo, iniciando Beep de emergencia:", error);
+          const context = new (window.AudioContext || window.webkitAudioContext)();
+          const osc = context.createOscillator();
+          const gain = context.createGain();
+          osc.connect(gain); gain.connect(context.destination);
+          osc.type = "sine"; osc.frequency.value = 880;
+          gain.gain.setValueAtTime(0, context.currentTime);
+          gain.gain.linearRampToValueAtTime(0.5, context.currentTime + 0.1);
+          gain.gain.linearRampToValueAtTime(0, context.currentTime + 0.5);
+          osc.start(context.currentTime); osc.stop(context.currentTime + 0.5);
+        });
+      }
+    }
+
+    // ==========================================
+    // [MÓDULO 06] - LÓGICA DE PROMOCIONES (GAMIFICACIÓN)
+    // ==========================================
+    function abrirModalPromos() {
+        document.getElementById('loadingOverlay').style.display = 'flex';
+        google.script.run.withSuccessHandler(config => {
+            document.getElementById('loadingOverlay').style.display = 'none';
+            document.getElementById('toggleSubasta').checked = config.subastaActiva;
+            document.getElementById('toggleCabra').checked = config.cabraActiva;
+            document.getElementById('modalPromos').style.display = 'flex';
+        }).withFailureHandler(errorServidor).obtenerConfigPromos();
+    }
+
+    function cerrarModalPromos() { document.getElementById('modalPromos').style.display = 'none'; }
+
+    function guardarCambiosPromos() {
+        const subasta = document.getElementById('toggleSubasta').checked;
+        const cabra = document.getElementById('toggleCabra').checked;
+        document.getElementById('loadingOverlay').style.display = 'flex';
+        google.script.run.withSuccessHandler(msg => {
+            document.getElementById('loadingOverlay').style.display = 'none';
+            alert(msg); cerrarModalPromos();
+        }).withFailureHandler(errorServidor).guardarConfigPromos(subasta, cabra);
+    }
+
+    function lanzarEstampida() {
+        if(!confirm("⚠️ ¿Estás seguro? Todos los que abran el menú en los próximos 5 minutos verán la cabra.")) return;
+        document.getElementById('loadingOverlay').style.display = 'flex';
+        google.script.run.withSuccessHandler(msg => {
+            document.getElementById('loadingOverlay').style.display = 'none';
+            alert(msg); cerrarModalPromos();
+        }).withFailureHandler(errorServidor).lanzarEstampidaGlobal();
+    }
+
+    // ==========================================
+    // [MÓDULO 07] - ACCIONES KITCHEN DISPLAY SYSTEM (KDS)
+    // ==========================================
+    function avanzarPedido(id) {
+      if (!id) return;
+      document.getElementById('loadingOverlay').style.display = 'flex';
+      google.script.run.withFailureHandler(errorServidor).withSuccessHandler(() => { document.getElementById('loadingOverlay').style.display = 'none'; cargarSistemaCentral(); }).avanzarTicketCompleto(id);
+    }
+    
+    function forzarPedido(id, omitirStr) {
+      if (!id) return; let itemsFaltantes = omitirStr.replace(/,/g, ', ');
+      if (!confirm(`⚠️ Faltan insumos: ${itemsFaltantes}.\n\n¿Forzar preparación sin descontar stock?`)) return;
+      document.getElementById('loadingOverlay').style.display = 'flex';
+      google.script.run.withFailureHandler(errorServidor).withSuccessHandler(() => { document.getElementById('loadingOverlay').style.display = 'none'; cargarSistemaCentral(); }).avanzarTicketCompleto(id, omitirStr);
+    }
+
+    function confirmarPagoTicket(id) {
+      if (!id) return; if(!confirm("¿Confirmar PAGO de este pedido?")) return;
+      document.getElementById('loadingOverlay').style.display = 'flex';
+      google.script.run.withFailureHandler(errorServidor).withSuccessHandler(() => { document.getElementById('loadingOverlay').style.display = 'none'; cargarSistemaCentral(); }).confirmarPagoEspecifico(id);
+    }
+
+    function anularTicket(id) {
+      if (!id) return; if(!confirm("⚠️ ¿Anular pedido y devolver ingredientes?")) return;
+      document.getElementById('loadingOverlay').style.display = 'flex';
+      google.script.run.withFailureHandler(errorServidor).withSuccessHandler(() => { document.getElementById('loadingOverlay').style.display = 'none'; cargarSistemaCentral(); }).anularTicketEspecifico(id);
+    }
+
+    function ajustarTotalTicket(id, totalActual) {
+      const nuevoTotal = prompt(`Total actual: $${totalActual.toLocaleString()}.\nNUEVO TOTAL a cobrar (sin puntos/comas):`);
+      if (nuevoTotal === null || nuevoTotal.trim() === "" || isNaN(nuevoTotal) || Number(nuevoTotal) < 0) return;
+      const diferencia = Number(nuevoTotal) - totalActual; if (diferencia === 0) return;
+      document.getElementById('loadingOverlay').style.display = 'flex';
+      google.script.run.withFailureHandler(errorServidor).withSuccessHandler(() => { document.getElementById('loadingOverlay').style.display = 'none'; cargarSistemaCentral(); }).ajustarTotalPedidoRemoto(id, diferencia);
+    }
+
+    function agregarExtraTicket(id) {
+      const extraName = prompt("📝 Extra manual (Ej: Queso extra):"); if (!extraName) return;
+      const cobroExtra = prompt(`💰 Costo adicional (0 si es gratis):`, "0"); if (cobroExtra === null || isNaN(cobroExtra) || cobroExtra < 0) return;
+      document.getElementById('loadingOverlay').style.display = 'flex';
+      google.script.run.withFailureHandler(errorServidor).withSuccessHandler(() => { document.getElementById('loadingOverlay').style.display = 'none'; cargarSistemaCentral(); }).guardarExtraTicketRemoto(id, extraName, cobroExtra);
+    }
+
+    function marcarRush(id) {
+      if(!confirm("⚡ ¿Marcar como URGENTE (saltar fila)?")) return;
+      document.getElementById('loadingOverlay').style.display = 'flex';
+      google.script.run.withFailureHandler(errorServidor).withSuccessHandler(() => { document.getElementById('loadingOverlay').style.display = 'none'; cargarSistemaCentral(); }).marcarPedidoRushRemoto(id);
+    }
+
+    // ==========================================
+    // [MÓDULO 08] - LÓGICA DE PUNTO DE VENTA (POS)
+    // ==========================================
+    function buscarUniversalPOS(texto) {
+      let txt = texto.toLowerCase(); let allItems = [...arrPrincipales, ...arrExtras, ...arrBebidas];
+      let gridsToHide = ['gridPrincipal', 'gridExtras', 'gridBebidas'];
+      if(txt.length > 0) {
+          let matches = allItems.filter(i => i.nombre.toLowerCase().includes(txt));
+          gridsToHide.forEach(id => { if(document.getElementById(id)) document.getElementById(id).style.display = 'none'; });
+          document.getElementById('gridBusquedaUniversal').style.display = 'grid'; renderGrid('gridBusquedaUniversal', matches);
+      } else { document.getElementById('gridBusquedaUniversal').style.display = 'none'; cambiarPasoPOS(0); }
+    }
+
+    function clasificarMenuPOS(lista) {
+      arrPrincipales = []; arrBebidas = []; arrExtras = [];
+      const catsPrincipales = ['HAMBURGUESAS', 'CARNES ASADAS', 'PAPAS Y PICADAS', 'PERROS Y PERRAS', 'PATACONES Y BURRITOS', 'PRINCIPAL'];
+      lista.forEach(i => {
+         let cat = i.categoria ? i.categoria.toUpperCase() : "";
+         if (cat.includes("INGREDIENTE")) return;
+         if (cat === "BEBIDAS" || cat === "BEBIDA") arrBebidas.push(i);
+         else if (cat === "ADICIÓN" || cat === "ADICION" || cat === "SALSA" || cat === "EXTRA") arrExtras.push(i);
+         else if (catsPrincipales.includes(cat)) arrPrincipales.push(i);
+         else arrPrincipales.push(i); 
+      });
+      renderGrid('gridPrincipal', arrPrincipales); renderGrid('gridExtras', arrExtras); renderGrid('gridBebidas', arrBebidas);
+    }
+
+    function renderGrid(containerId, arr) {
+      const contenedor = document.getElementById(containerId); if(!contenedor) return;
+      let html = "";
+      arr.forEach(item => {
+        let colorPrecio = item.precio > 0 ? "text-green-600" : "text-danger";
+        html += `<button class="bg-white border-2 border-gray-200 p-3 rounded-xl shadow-sm hover:border-blue-500 hover:shadow-md transition text-left flex flex-col justify-between" onclick="agregarCarritoPOS('${item.nombre}', ${item.precio}, ${item.requiereEmpaque}, '${item.categoria}')">
+          <span class="font-bold text-[#343a40] text-[13px] leading-tight mb-2">${item.nombre}</span>
+          <span class="font-bold ${colorPrecio} text-[15px]">$${item.precio.toLocaleString()}</span>
+        </button>`;
+      });
+      contenedor.innerHTML = html;
+    }
+
+    function cambiarPasoPOS(direccion) {
+       pasoActualPOS += direccion; if (pasoActualPOS < 1) pasoActualPOS = 1; if (pasoActualPOS > 4) pasoActualPOS = 4;
+       for(let i=1; i<=4; i++) {
+          let stepDiv = document.getElementById('step'+i); stepDiv.style.display = (i === pasoActualPOS) ? 'block' : 'none';
+          let tab = document.getElementById('tab'+i);
+          if (i === pasoActualPOS) { tab.classList.add('text-blue-600', 'border-b-2', 'border-blue-600'); tab.classList.remove('text-gray-500'); } 
+          else { tab.classList.remove('text-blue-600', 'border-b-2', 'border-blue-600'); tab.classList.add('text-gray-500'); }
+       }
+       let isSearchActive = document.getElementById('buscadorUniversal').value.length > 0;
+       if (pasoActualPOS > 1) {
+           document.getElementById('buscadorUniversal').style.display = 'block';
+           if(isSearchActive) { document.querySelectorAll('.step-grid').forEach(el => el.style.display = 'none'); document.getElementById('gridBusquedaUniversal').style.display = 'grid'; } 
+           else { document.getElementById('gridBusquedaUniversal').style.display = 'none'; if(pasoActualPOS === 2) document.getElementById('gridPrincipal').style.display = 'grid'; if(pasoActualPOS === 3) document.getElementById('gridExtras').style.display = 'grid'; if(pasoActualPOS === 4) document.getElementById('gridBebidas').style.display = 'grid'; }
+       } else { document.getElementById('buscadorUniversal').style.display = 'none'; document.getElementById('gridBusquedaUniversal').style.display = 'none'; }
+       
+       document.getElementById('btnPrevPOS').style.visibility = (pasoActualPOS > 1) ? 'visible' : 'hidden';
+       document.getElementById('btnNextPOS').style.display = (pasoActualPOS < 4) ? 'block' : 'none';
+    }
+
+    function cambiarTipoPedido() {
+        let tipo = document.getElementById('posTipo').value; carritoPOS = carritoPOS.filter(i => !i.domAuto);
+        if (tipo === "DOMICILIO") {
+            let domItem = menuPOSGlobal.find(m => m.nombre === "DOMICILIO"); let precioDom = domItem ? domItem.precio : 2000;
+            carritoPOS.push({nombre: "DOMICILIO", precio: precioDom, cant: 1, requiereEmpaque: false, categoria: "", precioEditado: false, domAuto: true});
+            carritoPOS.push({nombre: "COSTO EMPAQUE", precio: 1000, cant: 1, requiereEmpaque: false, categoria: "", precioEditado: false, domAuto: true});
+        } else if (tipo === "PARA LLEVAR") {
+            carritoPOS.push({nombre: "COSTO EMPAQUE", precio: 1000, cant: 1, requiereEmpaque: false, categoria: "", precioEditado: false, domAuto: true});
+        }
+        dibujarCarritoPOS();
+    }
+
+    function abrirModalPOS() {
+      idPedidoEnEdicion = null; document.getElementById('tituloModalPOS').innerText = "📝 Tomar Pedido POS"; document.getElementById('btnEnviarPOS').innerHTML = "🚀 Enviar a Cocina"; document.getElementById('modalPOS').style.display = 'flex';
+      document.getElementById('posCliente').value = ""; document.getElementById('posCelular').value = ""; document.getElementById('posDireccion').value = ""; document.getElementById('posNotas').value = ""; document.getElementById('buscadorUniversal').value = ""; document.getElementById('posTipo').value = "LOCAL";
+      carritoPOS = []; pasoActualPOS = 0; cambiarPasoPOS(1); dibujarCarritoPOS();
+      if (menuPOSGlobal.length === 0) {
+         document.getElementById('gridPrincipal').innerHTML = "<p class='col-span-2 text-gray-500 font-bold'>Cargando menú...</p>";
+         google.script.run.withFailureHandler(errorServidor).withSuccessHandler(res => { menuPOSGlobal = res; clasificarMenuPOS(menuPOSGlobal); }).obtenerMenuPOS();
+      } else { clasificarMenuPOS(menuPOSGlobal); }
+    }
+
+    function prepararEdicion(id) {
+      carritoPOS = []; let ticket = datosKDSGlobal.find(t => t.id === id); if(!ticket) return;
+
+      const aplicarEdicion = () => {
+          idPedidoEnEdicion = id; document.getElementById('posCliente').value = ticket.cliente; document.getElementById('posCelular').value = ticket.celular || "";
+          
+          let tipoStr = ticket.tipo.toUpperCase();
+          if (tipoStr.includes("DOMICILIO")) document.getElementById('posTipo').value = "DOMICILIO"; else if (tipoStr.includes("LLEVAR")) document.getElementById('posTipo').value = "PARA LLEVAR"; else document.getElementById('posTipo').value = "LOCAL";
+          
+          document.getElementById('posPago').value = ticket.metodo_pago.toUpperCase() === "NEQUI" ? "NEQUI" : "EFECTIVO"; document.getElementById('posDireccion').value = ticket.direccion || ""; document.getElementById('posNotas').value = ticket.notas || "";
+
+          carritoPOS = [];
+          ticket.itemsObj.forEach(item => {
+             if(item.nombre !== "DOMICILIO" && item.nombre !== "COSTO EMPAQUE" && !item.nombre.startsWith("EXTRA:")) {
+                 let basePriceInfo = menuPOSGlobal.find(m => m.nombre === item.nombre); let basePrice = basePriceInfo ? basePriceInfo.precio : (item.precio || 0); let catOficial = basePriceInfo ? basePriceInfo.categoria : ""; let precioAUsar = basePrice; let fueEditado = false;
+                 if (catOficial === "SALSA") { precioAUsar = basePrice; fueEditado = false; } else if (item.precio !== basePrice) { precioAUsar = item.precio; fueEditado = true; }
+                 carritoPOS.push({ nombre: item.nombre, cant: item.cant, precio: precioAUsar, requiereEmpaque: basePriceInfo ? basePriceInfo.requiereEmpaque : false, categoria: catOficial, precioEditado: fueEditado });
+             } else if (item.nombre === "DOMICILIO" || item.nombre === "COSTO EMPAQUE") { carritoPOS.push({ nombre: item.nombre, cant: item.cant, precio: item.precio, requiereEmpaque: false, categoria: "", precioEditado: false, domAuto: true }); }
+          });
+          
+          document.getElementById('tituloModalPOS').innerText = "✏️ Modificar #" + (id.split('-').length > 2 ? id.split('-')[id.split('-').length - 2] : id.split('-').pop()); document.getElementById('btnEnviarPOS').innerHTML = "🔄 Actualizar Pedido"; pasoActualPOS = 0; cambiarPasoPOS(1); dibujarCarritoPOS(); document.getElementById('modalPOS').style.display = 'flex';
+      };
+
+      if (menuPOSGlobal.length === 0) { document.getElementById('loadingOverlay').style.display = 'flex'; google.script.run.withSuccessHandler(res => { document.getElementById('loadingOverlay').style.display = 'none'; menuPOSGlobal = res; clasificarMenuPOS(menuPOSGlobal); aplicarEdicion(); }).obtenerMenuPOS(); } else { aplicarEdicion(); }
+    }
+
+    function cerrarModalPOS() { document.getElementById('modalPOS').style.display = 'none'; }
+
+    function agregarCarritoPOS(nombre, precio, requiereEmpaque = false, categoria = "") {
+      let index = carritoPOS.findIndex(i => i.nombre === nombre);
+      if (index >= 0) carritoPOS[index].cant++; else carritoPOS.push({nombre: nombre, precio: precio, cant: 1, requiereEmpaque: requiereEmpaque, precioEditado: false, categoria: categoria}); dibujarCarritoPOS();
+    }
+
+    function agregarItemManualPOS() {
+      const nombre = prompt("📝 Producto manual:"); if (!nombre) return; const precio = prompt(`💰 Precio unitario de ${nombre}:`, "0"); if (!precio || isNaN(precio) || precio < 0) return; agregarCarritoPOS(nombre.toUpperCase(), Number(precio), false, "");
+    }
+
+    function modificarCantPOS(index, suma) {
+      if(suma) { carritoPOS[index].cant++; } else { carritoPOS[index].cant--; if (carritoPOS[index].cant <= 0) carritoPOS.splice(index, 1); } dibujarCarritoPOS();
+    }
+
+    function editarPrecioPOS(index, precioActualCalculado) {
+      const nuevoPrecio = prompt(`✏️ Modificar precio de ${carritoPOS[index].nombre}:`, precioActualCalculado); if (nuevoPrecio === null || nuevoPrecio.trim() === "" || isNaN(nuevoPrecio) || Number(nuevoPrecio) < 0) return; carritoPOS[index].precio = Number(nuevoPrecio); carritoPOS[index].precioEditado = true; dibujarCarritoPOS();
+    }
+
+    function dibujarCarritoPOS() {
+      const tbody = document.getElementById('bodyCarritoPOS'); 
+      let granTotal = 0; let html = "";
+      
+      let salsasGratisDisponibles = 0; let platosPrincipales = 0; let requiereEmpaqueGeneral = 0;
+
+      carritoPOS.forEach(item => {
+         let n = item.nombre.toUpperCase(); let c = item.categoria ? item.categoria.toUpperCase() : '';
+         let esBebida = ["DEL VALLE", "COCA", "SPRITE", "PREMIO", "CUATRO", "JUGO", "LIMONADA", "AGUA"].some(b => n.includes(b)) || c.includes("BEBIDA");
+         let esSalsa = c.includes('SALSA') || n.includes("SALSA") || n.includes("GUACAMOLE") || n.includes("CHIMICHURRI") || n.includes("TÁRTARA");
+         let esAdicion = ["ADICION", "ADICIÓN", "EXTRA"].includes(c) && !n.includes("PAPAS");
+         let excluidoDeEmpaque = esBebida || esSalsa || n === "CABRA DE ORO" || n === "DOMICILIO" || n === "COSTO EMPAQUE";
+         let esPrincipal = !excluidoDeEmpaque && !esAdicion;
+
+         if (esPrincipal) { salsasGratisDisponibles += (Number(item.cant) * 3); platosPrincipales += Number(item.cant); }
+         if (!excluidoDeEmpaque) { requiereEmpaqueGeneral += Number(item.cant); }
+      });
+
+      let contadorSalsas = 0;
+      
+      carritoPOS.forEach((item, idx) => {
+        if (item.nombre === "COSTO EMPAQUE" && item.domAuto) {
+            if (platosPrincipales > 0) item.cant = platosPrincipales; else if (requiereEmpaqueGeneral > 0) item.cant = 1; else item.cant = 0; 
+        }
+
+        let precioAAplicar = item.precio; let totalFila = 0;
+        let esSalsa = item.categoria === "SALSA" || item.nombre.includes("SALSA") || item.nombre.includes("GUACAMOLE") || item.nombre.includes("CHIMICHURRI") || item.nombre.includes("TÁRTARA");
+        
+        if (esSalsa && !item.precioEditado) { 
+           for(let i = 0; i < item.cant; i++) { 
+              if (contadorSalsas < salsasGratisDisponibles) totalFila += 0; else totalFila += precioAAplicar; 
+              contadorSalsas++; 
+           } 
+        } else { totalFila = precioAAplicar * item.cant; }
+        
+        granTotal += totalFila;
+        
+        if (item.cant > 0) {
+          html += `
+            <tr>
+              <td class="pb-2 flex items-center gap-1"><button class="bg-gray-200 w-6 h-6 rounded text-oscuro font-bold hover:bg-gray-300" onclick="modificarCantPOS(${idx}, false)">-</button><span class="w-4 text-center font-bold text-[13px]">${item.cant}</span><button class="bg-gray-200 w-6 h-6 rounded text-oscuro font-bold hover:bg-gray-300" onclick="modificarCantPOS(${idx}, true)">+</button></td>
+              <td class="pb-2 font-bold text-[13px]">${item.nombre}</td>
+              <td class="pb-2 text-right text-gray-600 font-semibold">$${totalFila.toLocaleString()} <button class="ml-1 text-[11px]" onclick="editarPrecioPOS(${idx}, ${precioAAplicar})">✏️</button></td>
+              <td class="pb-2 text-right"><button class="text-danger font-bold ml-2" onclick="carritoPOS.splice(${idx},1); dibujarCarritoPOS();">X</button></td>
+            </tr>
+          `;
+        }
+      });
+      tbody.innerHTML = html; document.getElementById('totalPOS').innerText = granTotal.toLocaleString();
+    }
+
+    function enviarPedidoPOS() {
+      let cliente = document.getElementById('posCliente').value.trim(); let celular = document.getElementById('posCelular').value.trim(); let tipo = document.getElementById('posTipo').value; let pago = document.getElementById('posPago').value; let dir = document.getElementById('posDireccion').value.trim(); let notas = document.getElementById('posNotas').value.trim();
+      if (!cliente) { alert("⚠️ Nombre del cliente requerido."); cambiarPasoPOS(-10); return; } if (carritoPOS.length === 0) { alert("⚠️ Carrito vacío."); return; } if (tipo === "DOMICILIO" && !dir) { alert("⚠️ Dirección requerida para domicilios."); cambiarPasoPOS(-10); return; }
+      if(!confirm(idPedidoEnEdicion ? `¿Actualizar pedido? Total: $${document.getElementById('totalPOS').innerText}` : `¿Enviar a Cocina? Total: $${document.getElementById('totalPOS').innerText}`)) return;
+
+      document.getElementById('loadingOverlay').style.display = 'flex'; cerrarModalPOS();
+
+      let tipoF = tipo; if (tipoF === "LOCAL") tipoF = "LOCAL ⚡";
+      let datosCliente = { nombre: cliente, celular: celular, tipo_pedido: tipoF, metodo_pago: pago, direccion: dir, notas: notas };
+      
+      let salsasGratisDisponibles = 0; let platosPrincipalesEnvio = 0; let requiereEmpaqueGeneralEnvio = 0;
+
+      carritoPOS.forEach(item => {
+         let n = item.nombre.toUpperCase(); let c = item.categoria ? item.categoria.toUpperCase() : '';
+         let esBebida = ["DEL VALLE", "COCA", "SPRITE", "PREMIO", "CUATRO", "JUGO", "LIMONADA", "AGUA"].some(b => n.includes(b)) || c.includes("BEBIDA");
+         let esSalsa = c.includes('SALSA') || n.includes("SALSA") || n.includes("GUACAMOLE") || n.includes("CHIMICHURRI") || n.includes("TÁRTARA");
+         let esAdicion = ["ADICION", "ADICIÓN", "EXTRA"].includes(c) && !n.includes("PAPAS");
+         let excluidoDeEmpaque = esBebida || esSalsa || n === "CABRA DE ORO" || n === "DOMICILIO" || n === "COSTO EMPAQUE";
+         let esPrincipal = !excluidoDeEmpaque && !esAdicion;
+         
+         if (esPrincipal) { salsasGratisDisponibles += (Number(item.cant) * 3); platosPrincipalesEnvio += Number(item.cant); }
+         if (!excluidoDeEmpaque) { requiereEmpaqueGeneralEnvio += Number(item.cant); }
+      });
+
+      let contadorSalsasEnvio = 0; let carritoParaEnviar = [];
+      
+      carritoPOS.forEach(item => {
+          if (item.nombre === "COSTO EMPAQUE" && item.domAuto) {
+              if (platosPrincipalesEnvio > 0) item.cant = platosPrincipalesEnvio; else if (requiereEmpaqueGeneralEnvio > 0) item.cant = 1; else item.cant = 0;
+          }
+
+          if (item.cant > 0) {
+              let precioFinalUnidad = item.precio; let totalItem = 0;
+              let esSalsa = item.categoria === "SALSA" || item.nombre.includes("SALSA") || item.nombre.includes("GUACAMOLE") || item.nombre.includes("CHIMICHURRI") || item.nombre.includes("TÁRTARA");
+              
+              if (esSalsa && !item.precioEditado) { 
+                 for(let i=0; i<item.cant; i++) { 
+                    if (contadorSalsasEnvio < salsasGratisDisponibles) totalItem += 0; else totalItem += precioFinalUnidad; 
+                    contadorSalsasEnvio++; 
+                 } 
+              } else { totalItem = precioFinalUnidad * item.cant; }
+              carritoParaEnviar.push({ nombre: item.nombre, cant: item.cant, precioTotalCalculado: totalItem });
+          }
+      });
+
+      if (idPedidoEnEdicion) { google.script.run.withFailureHandler(errorServidor).withSuccessHandler(() => { document.getElementById('loadingOverlay').style.display = 'none'; cargarSistemaCentral(); }).modificarPedidoPOS(idPedidoEnEdicion, datosCliente, JSON.stringify(carritoParaEnviar)); } 
+      else { google.script.run.withFailureHandler(errorServidor).withSuccessHandler(() => { document.getElementById('loadingOverlay').style.display = 'none'; cargarSistemaCentral(); }).guardarPedidoPOS(datosCliente, JSON.stringify(carritoParaEnviar), "ADMIN_MASTER"); }
+    }
+
+    // ==========================================
+    // [MÓDULO 09] - CIERRE, MERMAS, RECETAS Y COMPRAS
+    // ==========================================
+    function confirmarCierre() { if(!confirm("¿Estás seguro de realizar el Cierre de Turno?")) return; document.getElementById('loadingOverlay').style.display = 'flex'; google.script.run.withFailureHandler(errorServidor).withSuccessHandler((resumen) => { document.getElementById('loadingOverlay').style.display = 'none'; mostrarModalCierre(resumen); cargarSistemaCentral(); }).ejecutarCierreTurnoKDS(); }
+    function mostrarModalCierre(res) { let pagosHtml = ""; for(let m in res.pagos) pagosHtml += `<li class="flex justify-between border-b border-gray-200 py-1"><span>${m}:</span> <strong>$${res.pagos[m].toLocaleString()}</strong></li>`; document.getElementById('resVentas').innerText = res.ventas; document.getElementById('resTotal').innerText = "$" + res.total.toLocaleString(); document.getElementById('resUtilidad').innerText = "$" + res.utilidad.toLocaleString(); document.getElementById('resAnulados').innerText = res.anulados; document.getElementById('resPagos').innerHTML = pagosHtml || "<li>Sin ingresos</li>"; document.getElementById('modalCierre').style.display = 'flex'; }
+    function cerrarModalCierre() { document.getElementById('modalCierre').style.display = 'none'; }
+
+    function abrirModalMermas() { document.getElementById('modalMermas').style.display = 'flex'; if (catalogoGlobal.length === 0) { document.getElementById('contenedorBotonesMermas').innerHTML = "<p class='text-gray-500 font-bold'>Cargando...</p>"; google.script.run.withFailureHandler(errorServidor).withSuccessHandler(res => { catalogoGlobal = res; pintarBotonesMermas(catalogoGlobal); }).obtenerCatalogoCompras(); } else { pintarBotonesMermas(catalogoGlobal); } }
+    function cerrarModalMermas() { document.getElementById('modalMermas').style.display = 'none'; }
+    function pintarBotonesMermas(lista) { const contenedor = document.getElementById('contenedorBotonesMermas'); let html = ""; lista.forEach(item => { html += `<button class="bg-white border-2 border-gray-200 p-3 rounded-xl shadow-sm text-left hover:border-yellow-500 transition flex flex-col justify-center" onclick="agregarMermaCarrito('${item.nombre}', '${item.hoja}', '${item.unidad}')"><span class="font-bold text-sm">${item.nombre}</span><span class="text-xs text-gray-500">${item.unidad}</span></button>`; }); contenedor.innerHTML = html; }
+    function filtrarMermas() { const texto = document.getElementById('buscadorMermas').value.toLowerCase(); const filtrados = catalogoGlobal.filter(item => item.nombre.toLowerCase().includes(texto)); pintarBotonesMermas(filtrados); }
+    function agregarMermaCarrito(nombre, hoja, unidad) { const cant = prompt(`🗑️ ¿Qué cantidad de ${nombre} (en ${unidad}) se va a dar de baja?`); if (!cant || isNaN(cant) || cant <= 0) return; const motivo = prompt(`📝 ¿Cuál es el motivo?`); if (!motivo) return; carritoMermas.push({ nombre: nombre, hoja: hoja, cantidad: Number(cant), motivo: motivo }); dibujarCarritoMermas(); }
+    function eliminarMermaCarrito(index) { carritoMermas.splice(index, 1); dibujarCarritoMermas(); }
+    function dibujarCarritoMermas() { const tbody = document.getElementById('bodyCarritoMermas'); let html = ""; carritoMermas.forEach((item, idx) => { html += `<tr><td class="pb-2 font-bold">${item.nombre}</td><td class="pb-2">${item.cantidad}</td><td class="pb-2 text-xs text-gray-500">${item.motivo}</td><td class="pb-2 text-right"><button class="text-danger font-bold" onclick="eliminarMermaCarrito(${idx})">X</button></td></tr>`; }); tbody.innerHTML = html; }
+    function enviarLoteMermas() { if (carritoMermas.length === 0) return; if(!confirm("¿Confirmar baja?")) return; document.getElementById('loadingOverlay').style.display = 'flex'; cerrarModalMermas(); google.script.run.withFailureHandler(errorServidor).withSuccessHandler(() => { document.getElementById('loadingOverlay').style.display = 'none'; carritoMermas = []; dibujarCarritoMermas(); cargarSistemaCentral(); alert("✅ Mermas registradas."); }).doPost({ parameter: { accion: "guardar_mermas_lote", mermas_data: JSON.stringify(carritoMermas) } }); }
+
+    function abrirModalReceta(nombre) { document.getElementById('loadingOverlay').style.display = 'flex'; google.script.run.withFailureHandler(errorServidor).withSuccessHandler(res => { document.getElementById('loadingOverlay').style.display = 'none'; document.getElementById('tituloReceta').innerText = "📖 " + nombre; let html = `<ul class="divide-y divide-[#495057]">`; if(res.length === 0) { html += `<li class="py-3 text-danger text-center">No se encontró receta.</li>`; } else { res.forEach(r => { html += `<li class="py-3 flex justify-between text-base"><span>${r.ingrediente}</span><strong class="text-acento">${r.cantidad}</strong></li>`; }); } html += `</ul>`; document.getElementById('contenidoReceta').innerHTML = html; document.getElementById('modalReceta').style.display = 'flex'; }).obtenerRecetaProducto(nombre); }
+    function cerrarModalReceta() { document.getElementById('modalReceta').style.display = 'none'; }
+
+    function abrirModalCompras() { document.getElementById('modalCompras').style.display = 'flex'; if (catalogoGlobal.length === 0) { document.getElementById('contenedorBotonesInsumos').innerHTML = "<p class='text-gray-500 font-bold'>Cargando...</p>"; google.script.run.withFailureHandler(errorServidor).withSuccessHandler(renderizarCatalogo).obtenerCatalogoCompras(); } else { renderizarCatalogo(catalogoGlobal); } }
+    function cerrarModalCompras() { document.getElementById('modalCompras').style.display = 'none'; }
+    function renderizarCatalogo(catalogo) { catalogoGlobal = catalogo; pintarBotonesInsumos(catalogoGlobal); }
+    function pintarBotonesInsumos(lista) { const contenedor = document.getElementById('contenedorBotonesInsumos'); let html = ""; lista.forEach(item => { html += `<button class="bg-white border-2 border-gray-200 p-3 rounded-xl shadow-sm text-left hover:border-blue-500 transition flex flex-col justify-center" onclick="agregarAlCarrito('${item.nombre}', '${item.hoja}', '${item.unidad}')"><span class="font-bold text-sm">${item.nombre}</span><span class="text-xs text-gray-500">${item.unidad}</span></button>`; }); contenedor.innerHTML = html; }
+    function filtrarCatalogo() { const texto = document.getElementById('buscadorInsumos').value.toLowerCase(); const filtrados = catalogoGlobal.filter(item => item.nombre.toLowerCase().includes(texto)); pintarBotonesInsumos(filtrados); }
+    function agregarAlCarrito(nombre, hoja, unidad) { const cant = prompt(`🛒 ¿Cantidad de ${nombre} (${unidad}) comprada?`); if (!cant || isNaN(cant) || cant <= 0) return; const costo = prompt(`💰 ¿Total pagado? (Sin puntos ni comas)`); if (!costo || isNaN(costo) || costo <= 0) return; carritoCompras.push({ nombre: nombre, hoja: hoja, cantidad: Number(cant), costoTotal: Number(costo) }); dibujarCarrito(); }
+    function eliminarDelCarrito(index) { carritoCompras.splice(index, 1); dibujarCarrito(); }
+    function dibujarCarrito() { const tbody = document.getElementById('bodyCarrito'); let html = ""; let granTotal = 0; carritoCompras.forEach((item, idx) => { granTotal += item.costoTotal; html += `<tr><td class="pb-2 font-bold">${item.nombre}</td><td class="pb-2">${item.cantidad}</td><td class="pb-2 text-right text-gray-600 font-bold">$${item.costoTotal.toLocaleString()}</td><td class="pb-2 text-right"><button class="text-danger font-bold" onclick="eliminarDelCarrito(${idx})">X</button></td></tr>`; }); tbody.innerHTML = html; document.getElementById('totalCarritoTexto').innerText = granTotal.toLocaleString(); }
+    function enviarLoteCompras() { if (carritoCompras.length === 0) return; if(!confirm("¿Registrar compras?")) return; document.getElementById('loadingOverlay').style.display = 'flex'; cerrarModalCompras(); google.script.run.withFailureHandler(errorServidor).withSuccessHandler(() => { document.getElementById('loadingOverlay').style.display = 'none'; carritoCompras = []; dibujarCarrito(); cargarSistemaCentral(); alert("✅ Compras ingresadas."); }).doPost({ parameter: { accion: "guardar_compras_lote", compras_data: JSON.stringify(carritoCompras) } }); }
+
+    // ==========================================
+    // [MÓDULO 10] - MOTOR DE RENDERIZADO KDS Y TIMERS
+    // ==========================================
+    function cargarSistemaCentral() {
+      google.script.run.withFailureHandler(errorServidor).withSuccessHandler(dibujarTickets).obtenerPedidosKDS();
+      google.script.run.withFailureHandler(errorServidor).withSuccessHandler(dibujarAlertaInventario).obtenerAlertasInventario();
+    }
+
+    function dibujarAlertaInventario(alertas) {
+      const divAlerta = document.getElementById('alertaInventario');
+      if (alertas && alertas.length > 0) { divAlerta.innerHTML = "⚠️ STOCK CRÍTICO: " + alertas.join(" | "); divAlerta.style.display = "block"; } else { divAlerta.style.display = "none"; }
+    }
+
+    function dibujarTickets(datos) {
+      const container = document.getElementById('ticketsContainer'); datosKDSGlobal = datos; 
+      if (!datos || datos.length === 0) { 
+        container.innerHTML = "<div class='w-full flex flex-col items-center justify-center mt-10'><img src='https://humgerimages.carrd.co/assets/images/image10.png?v=9dc15a34' class='h-48 drop-shadow-xl mb-4'><h3 class='text-gray-500 font-bold text-xl'>Sin operaciones en curso ✅</h3></div>"; 
+        ticketsConocidos = []; primeraCarga = false; return; 
+      }
+
+      const noOrdersMsg = container.querySelector('div.w-full'); if(noOrdersMsg) noOrdersMsg.remove();
+
+      datos.sort((a, b) => {
+          let aRush = a.tipo.includes('⚡') || (a.notas && a.notas.includes('RUSH ⚡')); let bRush = b.tipo.includes('⚡') || (b.notas && b.notas.includes('RUSH ⚡'));
+          if (aRush && !bRush) return -1; if (!aRush && bRush) return 1; return 0; 
+      });
+
+      let idsActuales = datos.map(p => 'ticket-' + p.id); let hayNuevo = false;
+      if (!primeraCarga) { for (let idStr of idsActuales) { if (!ticketsConocidos.includes(idStr)) { hayNuevo = true; break; } } }
+      if (hayNuevo && alarmasActivadas) { dispararAlarma(); } ticketsConocidos = idsActuales; primeraCarga = false; 
+
+      Array.from(container.children).forEach(child => { if (child.id && !idsActuales.includes(child.id)) container.removeChild(child); });
+
+      datos.forEach(p => {
+        let isRush = p.tipo.includes('⚡') || (p.notas && p.notas.includes('RUSH ⚡'));
+        
+        let itemsHtml = '';
+        p.itemsObj.forEach(item => {
+            if (item.isSubItem === "HIDDEN") return;
+            if (item.isSubItem === true) {
+                itemsHtml += `
+                <li class="flex justify-between items-center py-1.5 pl-6 border-b border-dashed border-gray-200 bg-[#f8f9fa]">
+                    <span class="font-semibold text-sm text-[#495057] flex items-center gap-2">
+                        <span class="text-acento font-bold">↳</span> ${item.nombre} <span class="text-acento font-bold ml-1">(x${item.cant})</span>
+                    </span>
+                </li>`;
+            } else {
+                itemsHtml += `
+                <li class="flex justify-between items-center py-2 border-b border-gray-300 mt-1">
+                    <span class="font-bold text-lg text-oscuro">${item.nombre} <span class="text-acento font-bold ml-1">(x${item.cant})</span></span>
+                    <button class="bg-gray-200 text-oscuro rounded px-2 py-1 shadow-sm hover:bg-acento hover:text-white transition text-sm" onclick="abrirModalReceta('${item.nombre}')">📖</button>
+                </li>`;
+            }
+        });
+        
+        let botonesFooter = ''; let adminButtons = '';
+
+        if (p.est === "POR PAGAR 💰") {
+          botonesFooter += `<button class="w-full bg-green-600 text-white py-2 rounded font-bold mb-2 shadow" onclick="confirmarPagoTicket('${p.id}')">✅ Confirmar Pago</button>`;
+        } else {
+          if (p.est === "PENDIENTE" && p.bloqueado) {
+             let omitirStr = p.motivosBloqueo.join(',');
+             botonesFooter += `<div class="bg-red-100 text-red-800 p-2 rounded text-xs font-bold text-center border border-red-200 mb-2">⚠️ INVENTARIO INSUFICIENTE:<br><span class="font-normal">${p.motivosBloqueo.join(', ')}</span></div>`;
+             botonesFooter += `<button class="w-full bg-yellow-500 text-oscuro py-2 rounded font-bold mb-2 shadow" onclick="forzarPedido('${p.id}', '${omitirStr}')">⚠️ Forzar Prep</button>`;
+          } else if (p.est === "PENDIENTE") {
+             botonesFooter += `<button class="w-full bg-blue-600 text-white py-2 rounded font-bold mb-2 shadow" onclick="avanzarPedido('${p.id}')">COMENZAR 👨‍🍳</button>`;
+          } else if (p.est === "EN COCINA 👨‍🍳") {
+             botonesFooter += `<button class="w-full bg-acento text-white py-2 rounded font-bold mb-2 shadow font-display tracking-widest" onclick="avanzarPedido('${p.id}')">DESPACHAR ✅</button>`;
+          }
+        }
+
+        if (p.est === "PENDIENTE" || p.est === "POR PAGAR 💰" || p.est === "EN COCINA 👨‍🍳") {
+           adminButtons += `<button class="w-full bg-red-600 text-white py-2 rounded font-bold mb-2 text-sm shadow hover:bg-red-700 animate-pulse border border-red-800" onclick="marcarRush('${p.id}')">⚡ FORZAR URGENCIA</button>`;
+           adminButtons += `<button class="w-full bg-[#17a2b8] text-white py-2 rounded font-bold mb-2 text-sm shadow hover:bg-[#138496]" onclick="prepararEdicion('${p.id}')">✏️ Editar Orden</button>`;
+           adminButtons += `<button class="w-full bg-yellow-400 text-oscuro py-2 rounded font-bold mb-2 text-sm shadow hover:bg-yellow-500" onclick="ajustarTotalTicket('${p.id}', ${p.total})">💰 Corregir Total</button>`;
+        }
+        adminButtons += `<button class="w-full bg-purple-600 text-white py-2 rounded font-bold mb-2 text-sm shadow hover:bg-purple-700" onclick="agregarExtraTicket('${p.id}')">🍅 Añadir Extra</button>`;
+        adminButtons += `<button class="w-full bg-gray-500 text-white py-2 rounded font-bold text-sm shadow hover:bg-danger transition" onclick="anularTicket('${p.id}')">❌ Anular Pedido</button>`;
+
+        let ticketClass = 'w-72 bg-white rounded-xl shadow-lg border-t-8 border-blue-500 flex flex-col';
+        if (p.est === "POR PAGAR 💰") ticketClass = 'w-72 bg-white rounded-xl shadow-lg border-t-8 border-danger flex flex-col';
+        if (p.est === "EN COCINA 👨‍🍳") ticketClass = 'w-72 bg-white rounded-xl shadow-lg border-t-8 border-yellow-500 flex flex-col';
+        if (isRush) ticketClass += ' rush-ticket';
+
+        let displayTurno = p.id.split('-').length > 2 ? p.id.split('-')[p.id.split('-').length - 2] : p.id.split('-').pop();
+        let horaIngreso = new Date(p.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+        let htmlInner = `
+          <div class="bg-gray-100 p-4 border-b border-gray-200 flex justify-between items-start rounded-t-lg">
+            <div>
+               <div class="text-2xl font-display text-oscuro">#${displayTurno} ${isRush ? '⚡' : ''}</div>
+               <div class="text-xs font-bold text-gray-600 mt-1 bg-white px-2 py-1 rounded shadow-sm border border-gray-200 inline-block">
+                  ⌚ ${horaIngreso} <span class="mx-1 text-gray-300">|</span> ⏱️ <span class="cronometro font-mono text-danger text-[13px]" data-time="${p.timestamp || Date.now()}">00:00</span>
+               </div>
+            </div>
+            <div class="text-xs font-bold px-3 py-1 rounded-full bg-gray-500 text-white shadow-inner text-center" style="${isRush ? 'background:#dc3545;' : ''}">${p.tipo}</div>
+          </div>
+          <div class="p-4 flex-grow bg-white">
+            <div class="font-bold text-lg text-oscuro mb-1">👤 ${p.cliente}</div>
+            ${p.celular ? `<div class="text-sm text-gray-500">📞 ${p.celular}</div>` : ''}
+            ${p.direccion ? `<div class="text-sm text-gray-500 mb-2">📍 ${p.direccion}</div>` : ''}
+            <ul class="mt-3 mb-2">${itemsHtml}</ul>
+            ${p.notas ? `<div class="bg-yellow-50 p-2 rounded text-sm italic border-l-4 border-yellow-400 font-bold mt-3 text-yellow-800">📝 "${p.notas}"</div>` : ''}
+          </div>
+          <div class="bg-yellow-100 p-3 border-t border-yellow-200 flex justify-between items-center text-oscuro">
+            <div class="font-bold">Cobro: <span class="text-danger">$${p.total.toLocaleString()}</span></div>
+            <div class="bg-yellow-400 px-2 py-1 rounded text-xs font-bold shadow-sm uppercase">${p.metodo_pago}</div>
+          </div>
+          <div class="p-4 bg-gray-50 border-t border-gray-200 rounded-b-xl flex flex-col gap-0.5">
+            ${botonesFooter}
+            ${adminButtons}
+          </div>
+        `;
+
+        let existing = document.getElementById('ticket-' + p.id);
+        let hash = p.est + p.total + p.bloqueado + p.itemsObj.length + (p.notas || "") + isRush + JSON.stringify(p.itemsObj);
+        
+        if (existing) {
+            if (existing.dataset.hash !== hash) { existing.innerHTML = htmlInner; existing.dataset.hash = hash; existing.className = ticketClass; }
+        } else {
+            let t = document.createElement('div'); t.id = 'ticket-' + p.id;
+            t.className = ticketClass; t.dataset.hash = hash; t.innerHTML = htmlInner; container.appendChild(t);
+        }
+      });
+    }
+
+    setInterval(cargarSistemaCentral, 5000);
+
+    // Motor asíncrono para el cálculo de latencia de tickets
+    setInterval(() => {
+        document.querySelectorAll('.cronometro').forEach(el => {
+            let startTime = parseInt(el.getAttribute('data-time'));
+            if (!startTime) return;
+            let diff = Math.floor((Date.now() - startTime) / 1000);
+            if (diff < 0) diff = 0;
+            let m = Math.floor(diff / 60).toString().padStart(2, '0');
+            let s = (diff % 60).toString().padStart(2, '0');
+            if (diff >= 3600) {
+                let h = Math.floor(diff / 3600).toString().padStart(2, '0');
+                m = Math.floor((diff % 3600) / 60).toString().padStart(2, '0');
+                el.innerText = h + ':' + m + ':' + s;
+            } else {
+                el.innerText = m + ':' + s;
+            }
+        });
+    }, 1000);
+  </script>
+</body>
+</html>
