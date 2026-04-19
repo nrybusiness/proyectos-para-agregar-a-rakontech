@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="theme-color" content="#0e0e0e">
+  <title>R3GIMEN GYM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <?!= include('Styles.css'); ?>
+</head>
+<body>
+
+  <!-- =====================================================
+       VISTA ALUMNO (default)
+       Se oculta cuando currentView === 'admin'
+  ====================================================== -->
+  <? if (currentView !== 'admin') { ?>
+
+  <header class="header">
+    <div class="header-top">
+      <div>
+        <p class="greeting-label">R3GIMEN GYM</p>
+        <h1 class="greeting-name" id="userNombre">Cargando...</h1>
+      </div>
+      <div class="avatar" id="userAvatar">--</div>
+    </div>
+    <div class="badge-status">
+      <span class="badge-dot"></span>
+      <span id="badgeText">Membresía Activa</span>
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-bar" id="progressBar" style="width:0%"></div>
+    </div>
+    <div class="progress-label">
+      <span id="progressLeft">— días usados</span>
+      <span id="progressRight" class="progress-alert"></span>
+    </div>
+  </header>
+
+  <section class="section">
+    <div class="section-header">
+      <h2 class="section-title">Reserva de Clases</h2>
+      <span class="section-sub" id="fechaHoy"></span>
+    </div>
+    <div id="clasesContainer">
+      <div class="skeleton-card"></div>
+      <div class="skeleton-card"></div>
+      <div class="skeleton-card"></div>
+    </div>
+  </section>
+
+  <section class="section section-last">
+    <div class="section-header">
+      <h2 class="section-title">Tu Rutina de Hoy</h2>
+      <span class="section-sub" id="rutinaSubtitle"></span>
+    </div>
+    <div id="rutinaContainer">
+      <div class="skeleton-card" style="height:220px"></div>
+    </div>
+  </section>
+
+  <footer class="footer-cta">
+    <button class="btn-cta" onclick="abrirRenovacion()">
+      <span class="cta-icon">⚡</span>
+      Renovar Mensualidad
+    </button>
+  </footer>
+
+  <? } ?>
+
+  <!-- =====================================================
+       VISTA ADMIN (solo cuando ?view=admin)
+  ====================================================== -->
+  <? if (currentView === 'admin') { ?>
+
+  <div class="admin-wrap">
+
+    <header class="admin-header">
+      <div class="admin-brand">
+        <span class="admin-brand-name">R3GIMEN GYM</span>
+        <span class="admin-brand-tag">Panel de Control</span>
+      </div>
+      <div class="admin-avatar">CA</div>
+    </header>
+
+    <!-- KPIs rápidos -->
+    <div class="kpi-grid" id="kpiGrid">
+      <div class="kpi-card">
+        <span class="kpi-label">Alumnos Activos</span>
+        <span class="kpi-value">24</span>
+      </div>
+      <div class="kpi-card kpi-alert">
+        <span class="kpi-label">Pagos Vencidos</span>
+        <span class="kpi-value" id="kpiVencidos">—</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Clases Hoy</span>
+        <span class="kpi-value">4</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Cupos Libres</span>
+        <span class="kpi-value" id="kpiCuposLibres">—</span>
+      </div>
+    </div>
+
+    <!-- Aforo del día -->
+    <section class="section">
+      <div class="section-header">
+        <h2 class="section-title">Aforo del Día</h2>
+        <span class="section-sub" id="adminFecha"></span>
+      </div>
+      <div id="aforoContainer">
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+      </div>
+    </section>
+
+    <!-- Pagos pendientes -->
+    <section class="section section-last">
+      <div class="section-header">
+        <h2 class="section-title">Pagos Pendientes</h2>
+        <span class="section-sub" id="countPagos"></span>
+      </div>
+      <div class="table-wrap">
+        <table class="pagos-table" id="pagosTable">
+          <thead>
+            <tr>
+              <th>Alumno</th>
+              <th>Plan</th>
+              <th>Vence</th>
+              <th>Monto</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody id="pagosBody">
+            <tr><td colspan="5" class="table-loading">Cargando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <? } ?>
+
+  <!-- Toast compartido -->
+  <div id="toast" class="toast" role="alert" aria-live="polite"></div>
+
+  <!-- Variable de vista inyectada para el JS cliente -->
+  <script>var CURRENT_VIEW = '<?= currentView ?>';</script>
+
+  <?!= include('AppScript.js'); ?>
+</body>
+</html>
